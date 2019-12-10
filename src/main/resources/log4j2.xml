@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Configuration>
+    <Appenders>
+        <Console name="STDOUT">
+            <PatternLayout>
+                <pattern>
+                    %date{ISO8601} %-5level [%-10t] %logger{55} %X{X-ApplicationId} - %msg%n
+                </pattern>
+            </PatternLayout>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Root level="INFO">
+            <AppenderRef ref="STDOUT"/>
+        </Root>
+    </Loggers>
+</Configuration>
