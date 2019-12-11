@@ -1,6 +1,6 @@
 package org.github.mitallast.openapi.protobuf.compiler
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.Paths
 import java.util.Collections
 
 import io.swagger.v3.oas.models.{OpenAPI, Operation, PathItem}
@@ -13,8 +13,8 @@ import io.swagger.v3.oas.models.media.{
   Schema,
   StringSchema
 }
-import org.apache.logging.log4j.scala.Logging
 import org.github.mitallast.openapi.protobuf.model._
+import org.log4s._
 
 import scala.collection.JavaConverters._
 import scala.util.matching.Regex
@@ -72,7 +72,9 @@ private object util {
     }
 }
 
-object ProtoCompiler extends Logging {
+object ProtoCompiler {
+  private val logger = getLogger
+
   import util._
 
   def compile(api: OpenAPI, path: String): ProtoFile = {
@@ -331,44 +333,23 @@ object ProtoCompiler extends Logging {
       case "application/json" =>
         schema match {
           case integer: IntegerSchema =>
-            val typeName = Option(integer.getFormat) match {
-              case Some("int32") => Identifier("int32")
-              case Some("int64") => Identifier("int64")
-              case None          => Identifier("int64")
-              case Some(format) =>
-                throw new IllegalArgumentException(s"$fieldName: unexpected integer format: $format")
-            }
+            val typeName = extractInteger(integer, required = true)
             NormalField(typeName, fieldName, fieldNum, Vector.empty)
-          case _: StringSchema =>
-            NormalField(Identifier("string"), fieldName, fieldNum, Vector.empty) // @todo check for enum
-          case _: DateTimeSchema => NormalField(Identifier("string"), fieldName, fieldNum, Vector.empty)
-          case _: BooleanSchema =>
-            NormalField(Identifier("boolean"), fieldName, fieldNum, Vector.empty)
+          case string: StringSchema =>
+            val typeName = extractString(string, required = true)
+            NormalField(typeName, fieldName, fieldNum, Vector.empty)
+          case date: DateTimeSchema =>
+            val typeName = extractDate(date, required = true)
+            NormalField(typeName, fieldName, fieldNum, Vector.empty)
+          case boolean: BooleanSchema =>
+            val typeName = extractBoolean(boolean, required = true)
+            NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case array: ArraySchema =>
-            require(array.getItems != null, s"$fieldName: array schema is required")
-            val items = array.getItems
-            val typeName = items match {
-              case integer: IntegerSchema =>
-                Option(integer.getFormat) match {
-                  case Some("int32") => Identifier("int32")
-                  case Some("int64") => Identifier("int64")
-                  case None          => Identifier("int64")
-                  case Some(format) =>
-                    throw new IllegalArgumentException(s"$fieldName: unexpected integer format: $format")
-                }
-              case _: StringSchema              => Identifier("string") // @todo check for enum
-              case _: DateTimeSchema            => Identifier("string")
-              case _: BooleanSchema             => Identifier("bool")
-              case _ if items.get$ref() != null => componentRefType(items.get$ref())
-              case _ =>
-                throw new IllegalArgumentException(s"$fieldName: schema is not supported")
-            }
+            val typeName = extractArrayType(array)
             RepeatedField(typeName, fieldName, fieldNum, Vector.empty)
-          case _ if schema.get$ref() != null =>
-            val typeName = componentRefType(schema.get$ref())
-            NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case _ =>
-            throw new IllegalArgumentException(s"$fieldName: schema is not supported")
+            val typeName = extractComponentRef(schema)
+            NormalField(typeName, fieldName, fieldNum, Vector.empty)
         }
       case "text/plain" =>
         require(schema.getType == "string", s"$fieldName: schema type should be string")
