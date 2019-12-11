@@ -62,6 +62,8 @@ final class ProtoFileBuilder(
   private val messages = Vector.newBuilder[Message]
   private val services = Vector.newBuilder[Service]
 
+  private val registeredMessages = mutable.Set.empty[Identifier]
+
   def +=(option: OptionStatement): ProtoFileBuilder = {
     options += option
     this
@@ -75,6 +77,11 @@ final class ProtoFileBuilder(
     this
   }
   def +=(message: Message): ProtoFileBuilder = {
+    require(
+      !registeredMessages.contains(message.messageName),
+      s"${message.messageName.value}: message with same identifier already registered"
+    )
+    registeredMessages += message.messageName
     messages += message
     this
   }
