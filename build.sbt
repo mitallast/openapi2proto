@@ -85,19 +85,6 @@ javaOptions in (Test, run) ++= Seq(
 graalVMNativeImageOptions += "--no-fallback"
 graalVMNativeImageOptions += "--allow-incomplete-classpath"
 graalVMNativeImageOptions += "--report-unsupported-elements-at-runtime"
-//graalVMNativeImageOptions += "-H:ReflectionConfigurationFiles=../cli-reflect.json"
-
-//libraryDependencies += "info.picocli" % "picocli" % "3.9.3"
-//libraryDependencies += "info.picocli" % "picocli-codegen" % "3.9.3"
-
-//lazy val graalConfig = inputKey[Unit]("gen-graal-config")
-//graalConfig := {
-//  (runMain in Compile)
-//    .fullInput(
-//      " picocli.codegen.aot.graalvm.ReflectionConfigGenerator -o=target/cli-reflect.json org.github.mitallast.openapi.protobuf.Main$"
-//    )
-//    .evaluated
-//}
 
 enablePlugins(GraalVMNativeImagePlugin)
 
