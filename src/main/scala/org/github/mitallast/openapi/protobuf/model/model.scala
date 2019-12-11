@@ -18,12 +18,14 @@ sealed trait TypeIdentifier {
   def value: String
 }
 final case class Identifier(value: String) extends TypeIdentifier {
+  require(!value.isEmpty, "empty identifier is not allowed")
   valid(value, identifiers.ident)
 }
 object FullIdentifier {
   val empty: FullIdentifier = FullIdentifier("google.protobuf.Empty")
 }
 final case class FullIdentifier(value: String) extends TypeIdentifier {
+  require(!value.isEmpty, "empty identifier is not allowed")
   valid(value, identifiers.fullIdent)
 }
 

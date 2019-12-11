@@ -7,8 +7,10 @@ import io.swagger.v3.oas.models.{OpenAPI, Operation, PathItem}
 import io.swagger.v3.oas.models.media.{
   ArraySchema,
   BooleanSchema,
+  DateSchema,
   DateTimeSchema,
   IntegerSchema,
+  NumberSchema,
   ObjectSchema,
   Schema,
   StringSchema
@@ -25,10 +27,10 @@ private object util {
   def cleanup(string: String): String = string.trim.replace('-', '_').replaceAll("[^a-zA-Z0-9_]", "")
 
   def camelCaseToUnderscore(string: String): String =
-    "[A-Z\\d]".r.replaceAllIn(string, m => "_" + m.group(0).toLowerCase())
+    "([a-z])([A-Z])".r.replaceAllIn(string, m => m.group(1) + "_" + m.group(2)).toLowerCase
 
   def underscoreToCamelCase(string: String): String =
-    "_([a-z\\d])".r.replaceAllIn(string, _.group(1).toUpperCase())
+    "_([a-zA-Z])".r.replaceAllIn(string, _.group(1).toUpperCase())
 
   def normalizeType(string: String): Identifier =
     Identifier(underscoreToCamelCase(cleanup(string)).capitalize)
@@ -36,8 +38,17 @@ private object util {
   def normalizeFieldName(string: String): Identifier =
     Identifier(camelCaseToUnderscore(cleanup(string)))
 
-  def normalizeEnumValue(string: String): Identifier =
-    Identifier(camelCaseToUnderscore(cleanup(string)).toUpperCase())
+  private val constantRegex = "^[a-zA-Z0-9]+(_([a-zA-Z0-9]+))*$".r
+  private val camelCaseRegex = "^([a-zA-Z][a-z]+)([A-Z][a-z]+)*$".r
+
+  def normalizeEnumValue(string: String): Identifier = {
+    val clean = cleanup(string)
+    clean match {
+      case constantRegex  => Identifier(clean.toUpperCase)
+      case camelCaseRegex => Identifier(camelCaseToUnderscore(clean).toUpperCase())
+      case _              => Identifier(camelCaseToUnderscore(clean).toUpperCase())
+    }
+  }
 
   def extension[T](ext: java.util.Map[String, Object], key: String): Option[T] =
     Option(ext)
@@ -100,6 +111,7 @@ object ProtoCompiler {
     }
 
   private def extractInteger(schema: IntegerSchema, required: Boolean): TypeIdentifier = {
+    require(schema.get$ref() == null, "$ref is not allowed")
     require(schema.getEnum == null, "enum is not allowed")
     (required, Option(schema.getFormat)) match {
       case (true, Some("int32"))  => Identifier("int32")
@@ -113,17 +125,41 @@ object ProtoCompiler {
     }
   }
 
+  private def extractNumber(schema: NumberSchema, required: Boolean): TypeIdentifier = {
+    require(schema.get$ref() == null, "$ref is not allowed")
+    require(schema.getEnum == null, "enum is not allowed")
+    (required, Option(schema.getFormat)) match {
+      case (true, Some("float"))   => Identifier("float")
+      case (true, Some("double"))  => Identifier("double")
+      case (true, None)            => Identifier("double")
+      case (false, Some("float"))  => FullIdentifier("google.protobuf.FloatValue")
+      case (false, Some("double")) => FullIdentifier("google.protobuf.DoubleValue")
+      case (false, None)           => FullIdentifier("google.protobuf.DoubleValue")
+      case (_, Some(format)) =>
+        throw new IllegalArgumentException(s"unexpected number format: $format")
+    }
+  }
+
   private def extractString(schema: StringSchema, required: Boolean): TypeIdentifier = {
+    require(schema.get$ref() == null, "$ref is not allowed")
     require(schema.getEnum == null, "inline enum is not supported, use $ref to component")
     if (required) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
   }
 
-  private def extractDate(schema: DateTimeSchema, required: Boolean): TypeIdentifier = {
+  private def extractDate(schema: DateSchema, required: Boolean): TypeIdentifier = {
+    require(schema.get$ref() == null, "$ref is not allowed")
+    require(schema.getEnum == null, "enum is not allowed")
+    if (required) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
+  }
+
+  private def extractDateTime(schema: DateTimeSchema, required: Boolean): TypeIdentifier = {
+    require(schema.get$ref() == null, "$ref is not allowed")
     require(schema.getEnum == null, "enum is not allowed")
     if (required) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
   }
 
   private def extractBoolean(schema: BooleanSchema, required: Boolean): TypeIdentifier = {
+    require(schema.get$ref() == null, "$ref is not allowed")
     require(schema.getEnum == null, "enum is not allowed")
     if (required) Identifier("bool") else FullIdentifier("google.protobuf.BoolValue")
   }
@@ -140,14 +176,17 @@ object ProtoCompiler {
     val items = schema.getItems
     items match {
       case integer: IntegerSchema => extractInteger(integer, required = true)
+      case number: NumberSchema   => extractNumber(number, required = true)
       case string: StringSchema   => extractString(string, required = true)
-      case date: DateTimeSchema   => extractDate(date, required = true)
+      case date: DateSchema       => extractDate(date, required = true)
+      case date: DateTimeSchema   => extractDateTime(date, required = true)
       case boolean: BooleanSchema => extractBoolean(boolean, required = true)
       case _                      => extractComponentRef(items)
     }
   }
 
   private def compileComponentEnum(protoFile: ProtoFileBuilder, typeName: String, schema: StringSchema): Unit = {
+    logger.info(s"enum=$typeName schema=${schema.getType}")
     require(schema.getEnum != null, "enum is required in schema")
     val enumBuilder = Enum.builder(normalizeType(typeName))
     for (elem <- schema.getEnum.asScala) {
@@ -157,7 +196,7 @@ object ProtoCompiler {
   }
 
   private def compileComponentObject(protoFile: ProtoFileBuilder, typeName: String, schema: ObjectSchema): Unit = {
-    logger.info(s"component=$typeName schema=${schema.getType}")
+    logger.info(s"message=$typeName schema=${schema.getType}")
     val messageBuilder = Message.builder(Identifier(typeName))
     messageBuilder.reserved(reserved(schema))
     require(schema.get$ref() == null, "component message ref is not supported")
@@ -180,11 +219,17 @@ object ProtoCompiler {
             case integer: IntegerSchema =>
               val typeName = extractInteger(integer, required)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
+            case number: NumberSchema =>
+              val typeName = extractNumber(number, required)
+              messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
             case string: StringSchema =>
               val typeName = extractString(string, required)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
-            case date: DateTimeSchema =>
+            case date: DateSchema =>
               val typeName = extractDate(date, required)
+              messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
+            case date: DateTimeSchema =>
+              val typeName = extractDateTime(date, required)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
             case boolean: BooleanSchema =>
               val typeName = extractBoolean(boolean, required)
@@ -192,9 +237,11 @@ object ProtoCompiler {
             case array: ArraySchema =>
               val typeName = extractArrayType(array)
               messageBuilder += RepeatedField(typeName, fieldName, fieldNum, Vector.empty)
-            case _ =>
+            case _ if schema.get$ref() != null =>
               val typeName = extractComponentRef(schema)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
+            case _ =>
+              throw new IllegalArgumentException(s"unsupported schema: $schema")
           }
       }
     }
@@ -248,11 +295,17 @@ object ProtoCompiler {
           case integer: IntegerSchema =>
             val typeName = extractInteger(integer, required)
             requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
+          case number: NumberSchema =>
+            val typeName = extractNumber(number, required)
+            requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case string: StringSchema =>
             val typeName = extractString(string, required)
             requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
-          case date: DateTimeSchema =>
+          case date: DateSchema =>
             val typeName = extractDate(date, required)
+            requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
+          case date: DateTimeSchema =>
+            val typeName = extractDateTime(date, required)
             requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case boolean: BooleanSchema =>
             val typeName = extractBoolean(boolean, required)
@@ -335,11 +388,17 @@ object ProtoCompiler {
           case integer: IntegerSchema =>
             val typeName = extractInteger(integer, required = true)
             NormalField(typeName, fieldName, fieldNum, Vector.empty)
+          case number: NumberSchema =>
+            val typeName = extractNumber(number, required = true)
+            NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case string: StringSchema =>
             val typeName = extractString(string, required = true)
             NormalField(typeName, fieldName, fieldNum, Vector.empty)
-          case date: DateTimeSchema =>
+          case date: DateSchema =>
             val typeName = extractDate(date, required = true)
+            NormalField(typeName, fieldName, fieldNum, Vector.empty)
+          case date: DateTimeSchema =>
+            val typeName = extractDateTime(date, required = true)
             NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case boolean: BooleanSchema =>
             val typeName = extractBoolean(boolean, required = true)
