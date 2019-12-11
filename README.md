@@ -34,4 +34,6 @@ gu install native-image
 
 ## Build tool
 
+```shell script
 sbt "graalvm-native-image:packageBin"
+```

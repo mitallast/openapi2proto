@@ -142,6 +142,7 @@ object ProtoCompiler {
 
   private def extractString(schema: StringSchema, required: Boolean): TypeIdentifier = {
     require(schema.get$ref() == null, "$ref is not allowed")
+    require(schema.getFormat == null, "format is not allowed")
     require(schema.getEnum == null, "inline enum is not supported, use $ref to component")
     if (required) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
   }

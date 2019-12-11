@@ -2,7 +2,7 @@
 
 Not supported:
  - external `$ref`
- - `default` in parameters and object fields
+ - `default` in enums, parameters and object fields
  - `minimum` in parameters and object fields
  - `maximum` in parameters and object fields
 
@@ -77,13 +77,25 @@ Supports:
  - `required`
  
 `schema` supports:
- - `integer` with format `int64` or `int32`
- - `string`
- - `array` of `integer` or `string` 
+- `integer` with format `int64` or `int32`
+- `number` with format `float` or `double`
+- `string`
+- `boolean`
+- `date` (compiles as `string`)
+- `datetime` (compiles as `string`)
+- `$ref` to `#/components/schemas/{name}`
+- `array`
+
+Array items supported:
+- `integer` with format `int64` or `int32`
+- `number` with format `float` or `double`
+- `string`
+- `boolean`
+- `date` (compiles as `string`)
+- `datetime` (compiles as `string`)
+- `$ref` to `#/components/schemas/{name}`
 
 Not supports:
- - `format` in `string`
- - `default`
  - `minimum`
  - `maximum`
  
@@ -206,19 +218,19 @@ Supports:
 
 Properties supported:
  - `integer` with format `int64` or `int32`
+ - `number` with format `float` or `double`
  - `string`
  - `boolean`
- - `date` compiles as `string`
+ - `date` (compiles as `string`)
+ - `datetime` (compiles as `string`)
  - `$ref` to `#/components/schemas/{name}`
  - `array`
 
 Array property items supported:
  - `integer` with format `int64` or `int32`
+ - `number` with format `float` or `double`
  - `string`
  - `boolean`
- - `date` compiles as `string`
+ - `date` (compiles as `string`)
+ - `datetime` (compiles as `string`)
  - `$ref` to `#/components/schemas/{name}`
-
-Not supports:
- - `string` formats
- - `default`
