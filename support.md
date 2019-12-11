@@ -1,9 +1,5 @@
 # OpenAPI v3 support
 
-Will be supported: 
- - `required` in parameters and object fields
- - `enum` in schema
- 
 Not supported:
  - external `$ref`
  - `default` in parameters and object fields
@@ -72,14 +68,20 @@ Requirements:
  - `name` must be an identifier in terms of protobuf v3 syntax
  - `schema` is required
  
+Supports:
+ - `x-proto-field` to override protobuf field name
+ - `x-proto-field-id` to override protobuf field id
+ - `boolean` type in schema
+ - `enum` type in schema
+ - `date` type in `schema`
+ - `required`
+ 
 `schema` supports:
  - `integer` with format `int64` or `int32`
  - `string`
  - `array` of `integer` or `string` 
 
 Not supports:
- - required
- - `$ref` in `schema`
  - `format` in `string`
  - `default`
  - `minimum`
@@ -89,13 +91,6 @@ Ignore:
  - `description`
  - `in`
  - `explode`
- 
-Will be supported:
- - `x-proto-field` to override protobuf field name
- - `x-proto-field-id` to override protobuf field id
- - `boolean` type in schema
- - `enum` type in schema
- - `date` type in `schema`
 
 #### requestBody:
 
@@ -107,6 +102,7 @@ Requirements:
 Supports:
  - `content`
  - `x-proto-field` to override protobuf field name
+ - `x-proto-field-id` to override protobuf field id
 
 Not supported:
  - multiple content types
@@ -124,6 +120,7 @@ Requirements:
 
 Supports:
  - `x-proto-field` to override protobuf field name
+ - `x-proto-field-id` to override protobuf field id
 
 Supported content types:
  - `application/json`: supports `array` of `$ref`, `$ref` in `schema`
@@ -136,7 +133,6 @@ Not supported:
  - inline object definitions in `schema`
  
 Will be supported:
- - `x-proto-field-id` to override protobuf field id
  - `oneof` in `schema`
  - primitive types in `schema`
 
@@ -166,6 +162,7 @@ Requirement:
  
 Supports:
 - `x-proto-field` to override protobuf field name
+- `x-proto-field-id` to override protobuf field id
  
 Supported media types:
  - `application/json`: supports `array` of `$ref`, `$ref` in `schema`
@@ -178,23 +175,20 @@ Not supported:
  - inline object definitions in `schema`
  
 Will be supported:
- - `x-proto-field-id` to override protobuf field id
  - `oneof` in `schema`
- - primitive types in `schema`
  
 ## components:
 
 Only `#/components/schemas/` supported with `type`: `object`
 
-Not supports:
- - enums
- - required
+Supports:
+ - `type` = `object`
+ - `type` = `string` with `enum`
 
 Ignored:
  - primitive definitions
 
 Will be supported:
- - enums
  - primitive definitions
 
 ### component objects:
@@ -204,7 +198,10 @@ Requirements:
  - field name must be an identifier in terms of protobuf v3 syntax
  
 Supports:
+ - `required`
  - `x-proto-reserved` to override
+ - `x-proto-field`
+ - `x-proto-field-id`
  - recursive definitions
 
 Properties supported:
@@ -223,10 +220,5 @@ Array property items supported:
  - `$ref` to `#/components/schemas/{name}`
 
 Not supports:
- - `required`
  - `string` formats
  - `default`
-
-Will be supported:
- - `x-proto-field`
- - `required`
