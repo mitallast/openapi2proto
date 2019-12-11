@@ -77,31 +77,20 @@ object instances {
     case (c: BooleanValue, builder) => builder.append(c.value)
   }
 
-  implicit val ProtoFileWriter: Writer[ProtoFile] = instance { (file, builder) =>
-    builder << file.syntax
-    builder << newline
-    builder << file.options
-    builder << file.imports
-    if (file.messages.nonEmpty) {
-      for (message <- file.messages) {
-        builder << message
-        builder << newline
-      }
-    }
-    if (file.services.nonEmpty) {
-      for (service <- file.services) {
-        builder << newline
-        builder << service
-      }
-    }
-  }
-
   implicit val ProtoSyntaxWriter: Writer[ProtoSyntax] = instance { (_, builder) =>
-    builder << ("""syntax "proto3"""") << end << newline
+    builder << ("""syntax = "proto3"""") << end << newline
   }
 
   implicit val OptionStatementWriter: Writer[OptionStatement] = instance { (option, builder) =>
     builder << "option " << option.optionName << " = " << option.value << end << newline
+  }
+
+  implicit val EnumOptionWriter: Writer[EnumOption] = instance { (option, builder) =>
+    builder << offset << "option " << option.optionName << " = " << option.value << end << newline
+  }
+
+  implicit val EnumValueOptionWriter: Writer[EnumValueOption] = instance { (option, builder) =>
+    builder << option.optionName << " = " << option.value
   }
 
   implicit val MessageOptionWriter: Writer[MessageOption] = instance { (option, builder) =>
@@ -126,10 +115,56 @@ object instances {
     }
   }
 
+  implicit val ProtoFileWriter: Writer[ProtoFile] = instance { (file, builder) =>
+    builder << file.syntax
+    builder << newline
+    builder << file.options
+    builder << file.imports
+    if (file.enums.nonEmpty) {
+      for (enum <- file.enums) {
+        builder << enum
+        builder << newline
+      }
+    }
+    if (file.messages.nonEmpty) {
+      for (message <- file.messages) {
+        builder << message
+        builder << newline
+      }
+    }
+    if (file.services.nonEmpty) {
+      for (service <- file.services) {
+        builder << newline
+        builder << service
+      }
+    }
+  }
+
   implicit val ImportStatementWriter: Writer[ImportStatement] = instance { (imports, builder) =>
     val path = s""""${imports.path.value}""""
     valid(path, letters.strLit)
     builder << "import " << path << end << newline
+  }
+
+  implicit val EnumWriter: Writer[Enum] = instance { (enum, builder) =>
+    builder << "enum " << enum.enumName << " {" << newline
+    builder << enum.options
+    for (value <- enum.values) {
+      builder << value
+    }
+    builder << "}" << newline
+  }
+
+  implicit val EnumValueWriter: Writer[EnumValue] = instance { (value, builder) =>
+    builder << offset << value.identifier << " = " << value.value
+    if (value.options.nonEmpty) {
+      builder << " [ "
+      for (option <- value.options) {
+        builder << option << " "
+      }
+      builder << "]"
+    }
+    builder << end << newline
   }
 
   implicit val MessageWriter: Writer[Message] = instance { (message, builder) =>
@@ -203,7 +238,7 @@ object instances {
   implicit val RpcOptionWriter: Writer[RpcOption] = instance { (opt, builder) =>
     builder << offset << offset << "option (" << opt.identifier << ") = { "
     for (o <- opt.options) {
-      builder << " " << o.optionName << " = " << o.value
+      builder << " " << o.optionName << ": " << o.value
     }
     builder << "}" << end << newline
   }

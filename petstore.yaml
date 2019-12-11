@@ -101,12 +101,7 @@ paths:
           schema:
             type: array
             items:
-              type: string
-              enum:
-                - available
-                - pending
-                - sold
-              default: available
+              $ref: '#/components/schemas/PetStatus'
       responses:
         '200':
           description: successful operation
@@ -575,6 +570,20 @@ externalDocs:
   url: 'http://swagger.io'
 components:
   schemas:
+    PetStatus:
+      type: string
+      enum:
+        - available
+        - pending
+        - sold
+      default: available
+    OrderStatus:
+      type: string
+      enum:
+        - placed
+        - approved
+        - delivered
+
     Order:
       type: object
       x-proto-reserved:
@@ -596,12 +605,7 @@ components:
           type: string
           format: date-time
         status:
-          type: string
-          description: Order Status
-          enum:
-            - placed
-            - approved
-            - delivered
+          $ref: '#/components/schemas/OrderStatus'
         complete:
           type: boolean
           default: false
@@ -680,12 +684,7 @@ components:
           items:
             $ref: '#/components/schemas/Tag'
         status:
-          type: string
-          description: pet status in the store
-          enum:
-            - available
-            - pending
-            - sold
+          $ref: '#/components/schemas/PetStatus'
       xml:
         name: Pet
     ApiResponse:

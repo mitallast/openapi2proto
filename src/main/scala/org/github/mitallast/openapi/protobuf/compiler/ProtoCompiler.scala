@@ -1,6 +1,6 @@
 package org.github.mitallast.openapi.protobuf.compiler
 
-import java.nio.file.Path
+import java.nio.file.{Path, Paths}
 import java.util.Collections
 
 import io.swagger.v3.oas.models.{OpenAPI, Operation, PathItem}
@@ -22,16 +22,22 @@ import scala.util.matching.Regex
 private object util {
   val schemaRef: Regex = "^#/components/schemas/([a-zA-Z0-9_.]+)$".r
 
-  // @todo implement
   def cleanup(string: String): String = string.trim.replace('-', '_').replaceAll("[^a-zA-Z0-9_]", "")
-  def underscoreToCamelCase(string: String): String = string
-  def camelCaseToUnderscore(string: String): String = string
+
+  def camelCaseToUnderscore(string: String): String =
+    "[A-Z\\d]".r.replaceAllIn(string, m => "_" + m.group(0).toLowerCase())
+
+  def underscoreToCamelCase(string: String): String =
+    "_([a-z\\d])".r.replaceAllIn(string, _.group(1).toUpperCase())
 
   def normalizeType(string: String): Identifier =
-    Identifier(underscoreToCamelCase(cleanup(string)))
+    Identifier(underscoreToCamelCase(cleanup(string)).capitalize)
 
   def normalizeFieldName(string: String): Identifier =
     Identifier(camelCaseToUnderscore(cleanup(string)))
+
+  def normalizeEnumValue(string: String): Identifier =
+    Identifier(camelCaseToUnderscore(cleanup(string)).toUpperCase())
 
   def extension[T](ext: java.util.Map[String, Object], key: String): Option[T] =
     Option(ext)
@@ -43,7 +49,7 @@ private object util {
 
   def packageName(api: OpenAPI, path: String): FullIdentifier = {
     val name = extension[String](api.getInfo.getExtensions, "x-proto-package").getOrElse {
-      Path.of(path).getFileName.toString.replaceAll("\\.[a-zA-Z]{3,5}$", "")
+      Paths.get(path).getFileName.toString.replaceAll("\\.[a-zA-Z]{3,5}$", "")
     }
     FullIdentifier(name)
   }
@@ -82,13 +88,74 @@ object ProtoCompiler extends Logging {
   private def compileComponents(protoFile: ProtoFileBuilder, api: OpenAPI): Unit =
     if (api.getComponents != null && api.getComponents.getSchemas != null) {
       api.getComponents.getSchemas.asScala.foreach {
-        case (typeName, schema: ObjectSchema) => compileComponentObject(protoFile, typeName, schema)
+        case (typeName, schema: ObjectSchema) =>
+          compileComponentObject(protoFile, typeName, schema)
+        case (typeName, schema: StringSchema) if schema.getEnum != null =>
+          compileComponentEnum(protoFile, typeName, schema)
         case (typeName, schema) =>
-          logger.warn(s"ignore component: $typeName")
+          logger.warn(s"ignore component: $typeName schema=${schema.getType}")
       }
     }
 
+  private def extractInteger(schema: IntegerSchema, required: Boolean): TypeIdentifier = {
+    require(schema.getEnum == null, "enum is not allowed")
+    (required, Option(schema.getFormat)) match {
+      case (true, Some("int32"))  => Identifier("int32")
+      case (true, Some("int64"))  => Identifier("int64")
+      case (true, None)           => Identifier("int64")
+      case (false, Some("int32")) => FullIdentifier("google.protobuf.Int32Value")
+      case (false, Some("int64")) => FullIdentifier("google.protobuf.Int64Value")
+      case (false, None)          => FullIdentifier("google.protobuf.Int64Value")
+      case (_, Some(format)) =>
+        throw new IllegalArgumentException(s"unexpected integer format: $format")
+    }
+  }
+
+  private def extractString(schema: StringSchema, required: Boolean): TypeIdentifier = {
+    require(schema.getEnum == null, "inline enum is not supported, use $ref to component")
+    if (required) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
+  }
+
+  private def extractDate(schema: DateTimeSchema, required: Boolean): TypeIdentifier = {
+    require(schema.getEnum == null, "enum is not allowed")
+    if (required) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
+  }
+
+  private def extractBoolean(schema: BooleanSchema, required: Boolean): TypeIdentifier = {
+    require(schema.getEnum == null, "enum is not allowed")
+    if (required) Identifier("bool") else FullIdentifier("google.protobuf.BoolValue")
+  }
+
+  private def extractComponentRef(schema: Schema[_]): TypeIdentifier = {
+    require(schema.get$ref() != null, "schema $ref is required")
+    require(schema.getEnum == null, "enum is not allowed")
+    componentRefType(schema.get$ref())
+  }
+
+  private def extractArrayType(schema: ArraySchema): TypeIdentifier = {
+    require(schema.getItems != null, "array schema is required")
+    require(schema.getEnum == null, "enum is not allowed")
+    val items = schema.getItems
+    items match {
+      case integer: IntegerSchema => extractInteger(integer, required = true)
+      case string: StringSchema   => extractString(string, required = true)
+      case date: DateTimeSchema   => extractDate(date, required = true)
+      case boolean: BooleanSchema => extractBoolean(boolean, required = true)
+      case _                      => extractComponentRef(items)
+    }
+  }
+
+  private def compileComponentEnum(protoFile: ProtoFileBuilder, typeName: String, schema: StringSchema): Unit = {
+    require(schema.getEnum != null, "enum is required in schema")
+    val enumBuilder = Enum.builder(normalizeType(typeName))
+    for (elem <- schema.getEnum.asScala) {
+      enumBuilder += EnumValue(normalizeEnumValue(elem), enumBuilder.nextValueNum, Vector.empty)
+    }
+    protoFile += enumBuilder.build
+  }
+
   private def compileComponentObject(protoFile: ProtoFileBuilder, typeName: String, schema: ObjectSchema): Unit = {
+    logger.info(s"component=$typeName schema=${schema.getType}")
     val messageBuilder = Message.builder(Identifier(typeName))
     messageBuilder.reserved(reserved(schema))
     require(schema.get$ref() == null, "component message ref is not supported")
@@ -96,7 +163,9 @@ object ProtoCompiler extends Logging {
     if (schema.getProperties != null && !schema.getProperties.isEmpty) {
       schema.getProperties.asScala.foreach {
         case (fieldNameRaw, schema) =>
-          val isRequired = requiredFields.contains(fieldNameRaw)
+          logger.info(s"field=$fieldNameRaw schema=${schema.getType}")
+
+          val required = requiredFields.contains(fieldNameRaw)
 
           val fieldName = extension[String](schema.getExtensions, "x-proto-field")
             .map(normalizeFieldName)
@@ -107,54 +176,23 @@ object ProtoCompiler extends Logging {
 
           schema match {
             case integer: IntegerSchema =>
-              val typeName = (isRequired, Option(integer.getFormat)) match {
-                case (true, Some("int32"))  => Identifier("int32")
-                case (true, Some("int64"))  => Identifier("int64")
-                case (true, None)           => Identifier("int64")
-                case (false, Some("int32")) => FullIdentifier("google.protobuf.Int32Value")
-                case (false, Some("int64")) => FullIdentifier("google.protobuf.Int64Value")
-                case (false, None)          => FullIdentifier("google.protobuf.Int64Value")
-                case (_, Some(format)) =>
-                  throw new IllegalArgumentException(s"field=$fieldNameRaw: unexpected integer format: $format")
-              }
+              val typeName = extractInteger(integer, required)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
             case string: StringSchema =>
-              // @todo check for enum
-              val typeName = if (isRequired) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
+              val typeName = extractString(string, required)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
             case date: DateTimeSchema =>
-              val typeName = if (isRequired) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
+              val typeName = extractDate(date, required)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
             case boolean: BooleanSchema =>
-              val typeName = if (isRequired) Identifier("bool") else FullIdentifier("google.protobuf.BoolValue")
+              val typeName = extractBoolean(boolean, required)
               messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
             case array: ArraySchema =>
-              require(array.getItems != null, "array schema is required")
-              val items = array.getItems
-              val typeName = items match {
-                case integer: IntegerSchema =>
-                  Option(integer.getFormat) match {
-                    case Some("int32") => Identifier("int32")
-                    case Some("int64") => Identifier("int64")
-                    case None          => Identifier("int64")
-                    case Some(format) =>
-                      throw new IllegalArgumentException(s"field=$fieldNameRaw: unexpected integer format: $format")
-                  }
-                case _: StringSchema =>
-                  // @todo check for enum
-                  Identifier("string")
-                case _: DateTimeSchema            => Identifier("string")
-                case _: BooleanSchema             => Identifier("bool")
-                case _ if items.get$ref() != null => componentRefType(items.get$ref())
-                case _ =>
-                  throw new IllegalArgumentException(s"field=$fieldNameRaw: schema is not supported")
-              }
+              val typeName = extractArrayType(array)
               messageBuilder += RepeatedField(typeName, fieldName, fieldNum, Vector.empty)
-            case _ if schema.get$ref() != null =>
-              val typeName = componentRefType(schema.get$ref())
-              messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
             case _ =>
-              throw new IllegalArgumentException(s"field=$fieldNameRaw: schema is not supported")
+              val typeName = extractComponentRef(schema)
+              messageBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
           }
       }
     }
@@ -198,7 +236,7 @@ object ProtoCompiler extends Logging {
         require(p.getSchema != null, "parameter schema is required")
         require(p.getSchema.get$ref() == null, "parameter schema $ref is not supported")
         val schema = p.getSchema
-        val isRequired = Option(p.getRequired).exists(_.booleanValue())
+        val required = Option(p.getRequired).exists(_.booleanValue())
         val fieldName = extension[String](p.getExtensions, "x-proto-field")
           .map(normalizeFieldName)
           .getOrElse(normalizeFieldName(p.getName))
@@ -206,48 +244,23 @@ object ProtoCompiler extends Logging {
           .getOrElse(requestBuilder.nextFieldNum)
         schema match {
           case integer: IntegerSchema =>
-            val typeName = (isRequired, Option(integer.getFormat)) match {
-              case (true, Some("int32"))  => Identifier("int32")
-              case (true, Some("int64"))  => Identifier("int64")
-              case (true, None)           => Identifier("int64")
-              case (false, Some("int32")) => FullIdentifier("google.protobuf.Int32Value")
-              case (false, Some("int64")) => FullIdentifier("google.protobuf.Int64Value")
-              case (false, None)          => FullIdentifier("google.protobuf.Int64Value")
-              case (_, Some(format)) =>
-                throw new IllegalArgumentException(s"parameter=${p.getName}: unexpected integer format: $format")
-            }
+            val typeName = extractInteger(integer, required)
             requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case string: StringSchema =>
-            // @todo check for enum
-            val typeName = if (isRequired) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
+            val typeName = extractString(string, required)
             requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case date: DateTimeSchema =>
-            val typeName = if (isRequired) Identifier("string") else FullIdentifier("google.protobuf.StringValue")
+            val typeName = extractDate(date, required)
             requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case boolean: BooleanSchema =>
-            val typeName = if (isRequired) Identifier("bool") else FullIdentifier("google.protobuf.BoolValue")
+            val typeName = extractBoolean(boolean, required)
             requestBuilder += NormalField(typeName, fieldName, fieldNum, Vector.empty)
           case array: ArraySchema =>
-            require(array.getItems != null, "array schema is required")
-            val items = array.getItems
-            val typeName = items match {
-              case integer: IntegerSchema =>
-                Option(integer.getFormat) match {
-                  case Some("int32") => Identifier("int32")
-                  case Some("int64") => Identifier("int64")
-                  case None          => Identifier("int64")
-                  case Some(format) =>
-                    throw new IllegalArgumentException(s"parameter=${p.getName}: unexpected integer format: $format")
-                }
-              case _: StringSchema   => Identifier("string") // @todo check for enum
-              case _: DateTimeSchema => Identifier("string")
-              case _: BooleanSchema  => Identifier("bool")
-              case _ =>
-                throw new IllegalArgumentException(s"parameter=${p.getName}: schema is not supported")
-            }
+            val typeName = extractArrayType(array)
             requestBuilder += RepeatedField(typeName, fieldName, fieldNum, Vector.empty)
           case _ =>
-            throw new IllegalArgumentException(s"parameter=${p.getName}: schema is not supported")
+            val typeName = extractComponentRef(schema)
+            requestBuilder += RepeatedField(typeName, fieldName, fieldNum, Vector.empty)
         }
       }
     }

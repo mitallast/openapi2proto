@@ -101,27 +101,47 @@ object ImportStatement {
 final case class ImportStatement(path: ProtoPath)
 
 final class EnumBuilder(private val enumName: Identifier) {
-  private val options = Vector.newBuilder[OptionStatement]
-  private val fields = Vector.newBuilder[EnumField]
+  private val options = Vector.newBuilder[EnumOption]
+  private val values = Vector.newBuilder[EnumValue]
 
-  def +=(option: OptionStatement): EnumBuilder = {
+  private val used = mutable.Set.empty[Int]
+  private val counter = new AtomicInteger()
+
+  private def use(num: Int): Unit = {
+    require(!used.contains(num))
+    used += num
+  }
+
+  @tailrec
+  def nextValueNum: Int = {
+    val id = counter.getAndIncrement()
+    if (used.contains(id)) {
+      nextValueNum
+    } else id
+  }
+
+  def +=(option: EnumOption): EnumBuilder = {
     options += option
     this
   }
-  def +=(field: EnumField): EnumBuilder = {
-    fields += field
+
+  def +=(value: EnumValue): EnumBuilder = {
+    use(value.value)
+    values += value
     this
   }
 
-  def build: Enum = Enum(enumName, options.result(), fields.result())
+  def build: Enum = Enum(enumName, options.result(), values.result())
 }
 
 object Enum {
   def builder(enumName: Identifier): EnumBuilder = new EnumBuilder(enumName)
 }
-final case class Enum(enumName: Identifier, options: Vector[OptionStatement], fields: Vector[EnumField])
+final case class Enum(enumName: Identifier, options: Vector[EnumOption], values: Vector[EnumValue])
 
-final case class EnumField(identifier: Identifier, value: Int, options: Vector[OptionStatement])
+final case class EnumOption(optionName: TypeIdentifier, value: ConstantValue)
+
+final case class EnumValue(identifier: Identifier, value: Int, options: Vector[EnumValueOption])
 
 final case class EnumValueOption(optionName: TypeIdentifier, value: ConstantValue)
 
@@ -164,13 +184,13 @@ final class MessageBuilder(private val messageName: Identifier) {
   }
 
   def +=(field: MessageField): MessageBuilder = {
-    fields += field
     field match {
       case n: NormalField   => use(n.number)
       case r: RepeatedField => use(r.number)
       case m: MapField      => use(m.number)
       case o: OneOf         => for (f <- o.fields) use(f.number)
     }
+    fields += field
     this
   }
 

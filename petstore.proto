@@ -1,0 +1,277 @@
+syntax = "proto3";
+
+import "google/api/annotations.proto";
+import "google/protobuf/wrappers.proto";
+
+enum PetStatus {
+   AVAILABLE = 0;
+   PENDING = 1;
+   SOLD = 2;
+}
+
+enum OrderStatus {
+   PLACED = 0;
+   APPROVED = 1;
+   DELIVERED = 2;
+}
+
+message Order {
+   reserved 1, 2, 5;
+
+   google.protobuf.Int64Value id = 4;
+   google.protobuf.Int64Value pet_id = 3;
+   google.protobuf.Int32Value quantity = 6;
+   google.protobuf.StringValue ship_date = 7;
+   OrderStatus status = 8;
+   google.protobuf.BoolValue complete = 9;
+}
+
+message Category {
+   google.protobuf.Int64Value id = 1;
+   google.protobuf.StringValue name = 2;
+}
+
+message User {
+   google.protobuf.Int64Value id = 1;
+   google.protobuf.StringValue username = 2;
+   google.protobuf.StringValue first_name = 3;
+   google.protobuf.StringValue last_name = 4;
+   google.protobuf.StringValue email = 5;
+   google.protobuf.StringValue password = 6;
+   google.protobuf.StringValue phone = 7;
+   google.protobuf.Int32Value user_status = 8;
+}
+
+message Tag {
+   google.protobuf.Int64Value id = 1;
+   google.protobuf.StringValue name = 2;
+}
+
+message Pet {
+   google.protobuf.Int64Value id = 1;
+   Category category = 2;
+   string name = 3;
+   repeated string photo_urls = 4;
+   repeated Tag tags = 5;
+   PetStatus status = 6;
+}
+
+message ApiResponse {
+   google.protobuf.Int32Value code = 1;
+   google.protobuf.StringValue type = 2;
+   google.protobuf.StringValue message = 3;
+}
+
+message UpdatePetRequest {
+   repeated string tags = 1;
+   Pet pet = 2;
+}
+
+message UpdatePetResponse {
+}
+
+message AddPetRequest {
+   Pet request_body = 1;
+}
+
+message AddPetResponse {
+}
+
+message FindPetsByStatusRequest {
+   repeated PetStatus status = 1;
+}
+
+message FindPetsByStatusResponse {
+   repeated Pet pets = 1;
+}
+
+message FindPetsByTagsRequest {
+   repeated string tags = 1;
+}
+
+message FindPetsByTagsResponse {
+   repeated Pet pets = 1;
+}
+
+message GetPetByIdRequest {
+   int64 pet_id = 1;
+}
+
+message GetPetByIdResponse {
+   Pet pet = 1;
+}
+
+message DeletePetRequest {
+   google.protobuf.StringValue api_key = 1;
+   int64 pet_id = 2;
+}
+
+message DeletePetResponse {
+}
+
+message UploadFileRequest {
+   int64 pet_id = 1;
+   bytes request_body = 2;
+}
+
+message UploadFileResponse {
+   ApiResponse response = 1;
+}
+
+message PlaceOrderRequest {
+   Order request_body = 1;
+}
+
+message PlaceOrderResponse {
+   Order order = 1;
+}
+
+message GetOrderByIdRequest {
+   int64 order_id = 1;
+}
+
+message GetOrderByIdResponse {
+   Order order = 1;
+}
+
+message DeleteOrderRequest {
+   int64 order_id = 1;
+}
+
+message DeleteOrderResponse {
+}
+
+message CreateUserRequest {
+   User user = 1;
+}
+
+message CreateUserResponse {
+}
+
+message CreateUsersWithArrayInputRequest {
+   repeated User request_body = 1;
+}
+
+message CreateUsersWithArrayInputResponse {
+}
+
+message CreateUsersWithListInputRequest {
+   repeated User request_body = 1;
+}
+
+message CreateUsersWithListInputResponse {
+}
+
+message LoginUserRequest {
+   string username = 1;
+   string password = 2;
+}
+
+message LoginUserResponse {
+   string info = 1;
+}
+
+message LogoutUserRequest {
+}
+
+message LogoutUserResponse {
+}
+
+message GetUserByNameRequest {
+   string username = 1;
+}
+
+message GetUserByNameResponse {
+   User user = 1;
+}
+
+message UpdateUserRequest {
+   string username = 1;
+   User request_body = 2;
+}
+
+message UpdateUserResponse {
+}
+
+message DeleteUserRequest {
+   string username = 1;
+}
+
+message DeleteUserResponse {
+}
+
+
+service PetstoreService {
+
+   rpc updatePet (UpdatePetRequest) returns (UpdatePetResponse) {
+      option (google.api.http) = {  put: "/pet" body: "pet"};
+   }
+
+   rpc addPet (AddPetRequest) returns (AddPetResponse) {
+      option (google.api.http) = {  post: "/pet" body: "request_body"};
+   }
+
+   rpc findPetsByStatus (FindPetsByStatusRequest) returns (FindPetsByStatusResponse) {
+      option (google.api.http) = {  get: "/pet/findByStatus" response_body: "pets"};
+   }
+
+   rpc findPetsByTags (FindPetsByTagsRequest) returns (FindPetsByTagsResponse) {
+      option (google.api.http) = {  get: "/pet/findByTags" response_body: "pets"};
+   }
+
+   rpc getPetById (GetPetByIdRequest) returns (GetPetByIdResponse) {
+      option (google.api.http) = {  get: "/pet/{petId}" response_body: "pet"};
+   }
+
+   rpc deletePet (DeletePetRequest) returns (DeletePetResponse) {
+      option (google.api.http) = {  delete: "/pet/{petId}"};
+   }
+
+   rpc uploadFile (UploadFileRequest) returns (UploadFileResponse) {
+      option (google.api.http) = {  post: "/pet/{petId}/uploadImage" body: "request_body" response_body: "response"};
+   }
+
+   rpc placeOrder (PlaceOrderRequest) returns (PlaceOrderResponse) {
+      option (google.api.http) = {  post: "/store/order" body: "request_body" response_body: "order"};
+   }
+
+   rpc getOrderById (GetOrderByIdRequest) returns (GetOrderByIdResponse) {
+      option (google.api.http) = {  get: "/store/order/{orderId}" response_body: "order"};
+   }
+
+   rpc deleteOrder (DeleteOrderRequest) returns (DeleteOrderResponse) {
+      option (google.api.http) = {  delete: "/store/order/{orderId}"};
+   }
+
+   rpc createUser (CreateUserRequest) returns (CreateUserResponse) {
+      option (google.api.http) = {  post: "/user" body: "user"};
+   }
+
+   rpc createUsersWithArrayInput (CreateUsersWithArrayInputRequest) returns (CreateUsersWithArrayInputResponse) {
+      option (google.api.http) = {  post: "/user/createWithArray" body: "request_body"};
+   }
+
+   rpc createUsersWithListInput (CreateUsersWithListInputRequest) returns (CreateUsersWithListInputResponse) {
+      option (google.api.http) = {  post: "/user/createWithList" body: "request_body"};
+   }
+
+   rpc loginUser (LoginUserRequest) returns (LoginUserResponse) {
+      option (google.api.http) = {  get: "/user/login" response_body: "info"};
+   }
+
+   rpc logoutUser (LogoutUserRequest) returns (LogoutUserResponse) {
+      option (google.api.http) = {  get: "/user/logout"};
+   }
+
+   rpc getUserByName (GetUserByNameRequest) returns (GetUserByNameResponse) {
+      option (google.api.http) = {  get: "/user/{username}" response_body: "user"};
+   }
+
+   rpc updateUser (UpdateUserRequest) returns (UpdateUserResponse) {
+      option (google.api.http) = {  put: "/user/{username}" body: "request_body"};
+   }
+
+   rpc deleteUser (DeleteUserRequest) returns (DeleteUserResponse) {
+      option (google.api.http) = {  delete: "/user/{username}"};
+   }
+}
