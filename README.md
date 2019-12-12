@@ -2,6 +2,21 @@
 
 Protobuf v3 with gRPC generator from subset of openapi v3
 
+## Usage
+
+```shell script
+openapi2proto v0.1
+Usage: openapi2proto [compile|server] <args>...
+
+Command: compile <file>
+compile openapi v3 to protobuf v3 with gRPC
+  <file>                   openapi file in yaml format
+Command: server [options]
+run web server with ui and rest api
+  -p, --port <value>       port listen
+  -h, --host <value>       host listen
+```
+
 ## Install GraalVM
 
 ### MacOS
