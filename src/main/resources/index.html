@@ -5,6 +5,7 @@
   <button type="submit">Compile</button>
 </form>
 
+<textarea id="logs"></textarea>
 <textarea id="result"></textarea>
 
 <script id="example" type="application/yaml">
@@ -750,6 +751,7 @@ components:
   if(editor.value === "") {
     editor.value = example.trimStart();
   }
+  const logs = document.getElementById("logs");
   const result = document.getElementById("result");
   form.addEventListener("submit", async function (e) {
     console.log(e);
@@ -758,12 +760,26 @@ components:
     const action = form.action;
     const method = form.method;
 
+    logs.value = "";
     result.value = "";
     const response = await fetch(action, {
       method: method,
       body: source
     });
-    result.value = await response.text();
+    const json = await response.json();
+    logs.value = json.log.map(function (record) {
+      console.log(record);
+      if("Info" in record) {
+        return "[INFO   ]" + record["Info"].message;
+      }
+      if("Warning" in record) {
+        return "[WARNING]" + record["Warning"].message;
+      }
+      if("Error" in record) {
+        return "[ERROR  ]" + record["Error"].message;
+      }
+    }).join("\n");
+    result.value = json.source;
   })
 })();
 </script>

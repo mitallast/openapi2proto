@@ -52,4 +52,8 @@ object lexical {
   @inline
   def valid(value: String, pattern: String): Unit =
     require(value.matches(s"^$pattern$$"), s"$value does not match $pattern")
+
+  @inline
+  def validate(value: String, pattern: String): Boolean =
+    value.matches(s"^$pattern$$")
 }

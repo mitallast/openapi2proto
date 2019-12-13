@@ -24,6 +24,9 @@ object Dependencies {
     val http4sVersion = "0.20.15"
     val http4sDsl = "org.http4s" %% "http4s-dsl" % http4sVersion
     val http4sServer = "org.http4s" %% "http4s-blaze-server" % http4sVersion
+    val http4sCirce = "org.http4s" %% "http4s-circe" % http4sVersion
+
+    val circeGeneric = "io.circe" %% "circe-generic" % "0.11.2"
 
     val swaggerParser = "io.swagger.parser.v3" % "swagger-parser" % "2.0.16" excludeAll (
       ExclusionRule(organization = "io.swagger.parser.v3", name = "swagger-parser-v2-converter"),
@@ -39,5 +42,17 @@ object Dependencies {
   import Compile._
   import Test._
 
-  val common = Seq(slf4jApi, slf4jSimple, log4s, scopt, http4sDsl, http4sServer, swaggerParser, scalacheck, scalatest)
+  val common = Seq(
+    slf4jApi,
+    slf4jSimple,
+    log4s,
+    scopt,
+    http4sDsl,
+    http4sServer,
+    http4sCirce,
+    circeGeneric,
+    swaggerParser,
+    scalacheck,
+    scalatest
+  )
 }

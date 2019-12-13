@@ -227,14 +227,14 @@ final case class NormalField(
   fieldType: TypeIdentifier,
   fieldName: Identifier,
   number: Int,
-  options: Vector[FieldOption]
+  options: Vector[FieldOption] = Vector.empty
 ) extends MessageField
 
 final case class RepeatedField(
   fieldType: TypeIdentifier,
   fieldName: Identifier,
   number: Int,
-  options: Vector[FieldOption]
+  options: Vector[FieldOption] = Vector.empty
 ) extends MessageField
 
 final case class OneOf(oneOfName: Identifier, fields: Vector[OneOfField]) extends MessageField

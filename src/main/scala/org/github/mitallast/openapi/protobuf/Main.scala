@@ -4,10 +4,14 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import cats.effect._
 import cats.implicits._
+import io.circe._
+import io.circe.syntax._
+import io.circe.generic.auto._
 import io.swagger.v3.parser.OpenAPIV3Parser
-import org.github.mitallast.openapi.protobuf.compiler.ProtoCompiler
+import org.github.mitallast.openapi.protobuf.compiler.{Error, LogMessage, ProtoCompiler}
 import org.github.mitallast.openapi.protobuf.writer.Writer
 import org.http4s._
+import org.http4s.circe._
 import org.http4s.dsl.io._
 import org.http4s.implicits._
 import org.http4s.server.blaze._
@@ -28,6 +32,8 @@ final case class Config(
   port: Int = 8080,
   host: String = "localhost"
 )
+
+final case class CompileResponse(log: Vector[LogMessage], source: Option[String])
 
 object Main extends IOApp {
   System.setProperty("org.slf4j.simpleLogger.showShortLogName", "true")
@@ -84,16 +90,27 @@ object Main extends IOApp {
 
   private def compile(filepath: Path): IO[ExitCode] = IO {
     val api = new OpenAPIV3Parser().read(filepath.toString)
-    val protoFile = ProtoCompiler.compile(api, filepath.toString)
-    val source = Writer.writeFile(protoFile)
-    println(source)
-    Files.write(
-      Paths.get(protoFile.path.value),
-      source.getBytes("UTF-8"),
-      StandardOpenOption.CREATE,
-      StandardOpenOption.TRUNCATE_EXISTING
-    )
-    ExitCode.Success
+    ProtoCompiler.compile(api, filepath.toString) match {
+      case (logging, Left(exitCode)) =>
+        for (message <- logging) println(message)
+        val errors = logging.count {
+          case _: Error => true
+          case _        => false
+        }
+        println(s"errors: $errors")
+        exitCode
+      case (logging, Right(protoFile)) =>
+        for (message <- logging) println(message)
+        val source = Writer.writeFile(protoFile)
+        println(source)
+        Files.write(
+          Paths.get(protoFile.path.value),
+          source.getBytes("UTF-8"),
+          StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING
+        )
+        ExitCode.Success
+    }
   }
 
   private def server(port: Int, host: String): IO[ExitCode] = {
@@ -104,11 +121,15 @@ object Main extends IOApp {
           for {
             source <- IO {
               val api = new OpenAPIV3Parser().readContents(yaml).getOpenAPI
-              val protoFile = ProtoCompiler.compile(api, "source.proto")
-              val source = Writer.writeFile(protoFile)
-              source
+              ProtoCompiler.compile(api, "source.proto") match {
+                case (logs, Left(exitCode)) =>
+                  CompileResponse(logs, None)
+                case (logs, Right(protoFile)) =>
+                  val source = Writer.writeFile(protoFile)
+                  CompileResponse(logs, Some(source))
+              }
             }
-            response <- Ok(source)
+            response <- Ok(source.asJson)
           } yield response
         }
     }

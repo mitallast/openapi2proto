@@ -201,7 +201,7 @@ message DeleteUserResponse {
 }
 
 
-service PetstoreService {
+service SwaggerPetstoreService {
 
    rpc updatePet (UpdatePetRequest) returns (UpdatePetResponse) {
       option (google.api.http) = {  put: "/pet" body: "pet"};
