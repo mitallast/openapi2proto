@@ -9,4 +9,4 @@ jobs:
       with:
         java-version: graalvm@
     - name: compile
-      run: sbt compile
+      run: sbt compile "graalvm-native-image:packageBin"
