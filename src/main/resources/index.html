@@ -581,6 +581,16 @@ externalDocs:
   url: 'http://swagger.io'
 components:
   schemas:
+    TestMessage:
+      type: object
+      properties:
+        test1:
+          x-proto-field: test2
+          oneOf:
+            - $ref: '#/components/schemas/PetStatus'
+            - $ref: '#/components/schemas/Pet'
+            - $ref: '#/components/schemas/OrderStatus'
+            - $ref: '#/components/schemas/Category'
     PetStatus:
       type: string
       enum:
@@ -594,7 +604,6 @@ components:
         - placed
         - approved
         - delivered
-
     Order:
       type: object
       x-proto-reserved:

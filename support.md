@@ -85,6 +85,7 @@ Supports:
 - `datetime` (compiles as `string`)
 - `$ref` to `#/components/schemas/{name}`
 - `array`
+- `oneOf`
 
 Array items supported:
 - `integer` with format `int64` or `int32`
@@ -135,7 +136,7 @@ Supports:
  - `x-proto-field-id` to override protobuf field id
 
 Supported content types:
- - `application/json`: supports `array` of `$ref`, `$ref` in `schema`
+ - `application/json`: supports `array` of `$ref`, `$ref` in `schema`, `oneOf`, primitive types
  - `text/plain`: only `type`: `string` supports
  - `application/octet-stream`: only `type`: `string` and `format`: `binary` supports
 
@@ -144,10 +145,6 @@ Not supported:
  - multiple content types
  - inline object definitions in `schema`
  
-Will be supported:
- - `oneof` in `schema`
- - primitive types in `schema`
-
 #### responses:
 
 Supports:
@@ -177,7 +174,7 @@ Supports:
 - `x-proto-field-id` to override protobuf field id
  
 Supported media types:
- - `application/json`: supports `array` of `$ref`, `$ref` in `schema`
+ - `application/json`: supports `array` of `$ref`, `$ref` in `schema`, `oneof`, primitive types
  - `text/plain`: only `type`: `string` supports
  - `application/octet-stream`: only `type`: `string` and `format`: `binary` supports
  
@@ -185,9 +182,6 @@ Not supported:
  - `$ref` in `response`
  - multiple content types
  - inline object definitions in `schema`
- 
-Will be supported:
- - `oneof` in `schema`
  
 ## components:
 
@@ -225,8 +219,9 @@ Properties supported:
  - `datetime` (compiles as `string`)
  - `$ref` to `#/components/schemas/{name}`
  - `array`
+ - `oneOf`
 
-Array property items supported:
+`array` and `oneOf` property items supported:
  - `integer` with format `int64` or `int32`
  - `number` with format `float` or `double`
  - `string`

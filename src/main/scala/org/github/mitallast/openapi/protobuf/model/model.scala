@@ -237,6 +237,19 @@ final case class RepeatedField(
   options: Vector[FieldOption] = Vector.empty
 ) extends MessageField
 
+final class OneOfBuilder(private val oneOfName: Identifier) {
+  private val fields = Vector.newBuilder[OneOfField]
+
+  def +=(field: OneOfField): OneOfBuilder = {
+    fields += field
+    this
+  }
+
+  def build: OneOf = OneOf(oneOfName, fields.result())
+}
+object OneOf {
+  def builder(oneOfName: Identifier): OneOfBuilder = new OneOfBuilder(oneOfName)
+}
 final case class OneOf(oneOfName: Identifier, fields: Vector[OneOfField]) extends MessageField
 
 final case class OneOfField(fieldType: TypeIdentifier, fieldName: Identifier, number: Int, options: Vector[FieldOption])

@@ -15,6 +15,15 @@ enum OrderStatus {
    DELIVERED = 2;
 }
 
+message TestMessage {
+   oneof test2 {
+      PetStatus pet_status = 1;
+      Pet pet = 2;
+      OrderStatus order_status = 3;
+      Category category = 4;
+   }
+}
+
 message Order {
    reserved 1, 2, 5;
 

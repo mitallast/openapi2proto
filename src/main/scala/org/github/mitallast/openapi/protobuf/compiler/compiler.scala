@@ -1,6 +1,7 @@
 package org.github.mitallast.openapi.protobuf.compiler
 
 import java.nio.file.Paths
+import java.util.Collections
 
 import cats.data._
 import cats.effect.ExitCode
@@ -9,6 +10,7 @@ import io.swagger.v3.oas.models.{OpenAPI, Operation, PathItem}
 import io.swagger.v3.oas.models.media.{
   ArraySchema,
   BooleanSchema,
+  ComposedSchema,
   Content,
   DateSchema,
   DateTimeSchema,
@@ -29,6 +31,8 @@ import org.github.mitallast.openapi.protobuf.model.{
   MessageBuilder,
   MessageField,
   NormalField,
+  OneOf,
+  OneOfField,
   OptionStatement,
   ProtoFile,
   ProtoFileBuilder,
@@ -311,24 +315,21 @@ object ProtoCompiler {
       _ <- require(media != null, "media type is required")
       schema = media.getSchema
       _ <- require(schema != null, "media type schema is required")
-
       fieldId <- compileFieldIdentifier(media.getExtensions, fieldName)
-      fieldNum = util.extension[Int](media.getExtensions, "x-proto-field-id").getOrElse(builder.nextFieldNum)
       _ = mediaType match {
         case "application/json" =>
-          for {
-            field <- compileField(fieldId, fieldNum, schema, required = true)
-            _ = builder += field
-          } yield ()
+          compileField(builder, fieldId, schema, media.getExtensions, required = true)
         case "text/plain" =>
           for {
             _ <- require(schema.getType == "string", s"$fieldName: schema type should be string")
+            fieldNum <- compileFieldNum(builder, media.getExtensions)
             _ = builder += NormalField(Identifier("string"), fieldId, fieldNum, Vector.empty)
           } yield ()
         case "application/octet-stream" =>
           for {
             _ <- require(schema.getType == "string", s"$fieldName: schema type should be string")
             _ <- require(schema.getFormat == "binary", s"$fieldName: string format should be binary")
+            fieldNum <- compileFieldNum(builder, media.getExtensions)
             _ = builder += NormalField(Identifier("bytes"), fieldId, fieldNum, Vector.empty)
           } yield ()
       }
@@ -345,24 +346,104 @@ object ProtoCompiler {
     for {
       _ <- info(s"compile field: $fiendName")
       fieldIdentifier <- compileFieldIdentifier(extensions, fiendName)
-      fieldNum = util.extension[Int](extensions, "x-proto-field-id").getOrElse(builder.nextFieldNum)
-      field <- compileField(fieldIdentifier, fieldNum, schema, required)
-      _ = builder += field
+      _ <- compileField(builder, fieldIdentifier, schema, extensions, required)
       _ <- info(s"compile field: $fiendName done")
     } yield ()
 
-  def compileField(fieldId: Identifier, fieldNum: Int, schema: Schema[_], required: Boolean): Result[MessageField] =
+  def compileField(
+    builder: MessageBuilder,
+    fieldId: Identifier,
+    schema: Schema[_],
+    extensions: Extensions,
+    required: Boolean
+  ): Result[Unit] =
     schema match {
-      case integer: IntegerSchema        => compileInteger(integer, required).map(NormalField(_, fieldId, fieldNum))
-      case number: NumberSchema          => compileNumber(number, required).map(NormalField(_, fieldId, fieldNum))
-      case string: StringSchema          => compileString(string, required).map(NormalField(_, fieldId, fieldNum))
-      case date: DateSchema              => compileDate(date, required).map(NormalField(_, fieldId, fieldNum))
-      case date: DateTimeSchema          => compileDateTime(date, required).map(NormalField(_, fieldId, fieldNum))
-      case boolean: BooleanSchema        => compileBoolean(boolean, required).map(NormalField(_, fieldId, fieldNum))
-      case _ if schema.get$ref() != null => compileComponentRef(schema).map(NormalField(_, fieldId, fieldNum))
-      case array: ArraySchema            => compileArrayType(array).map(RepeatedField(_, fieldId, fieldNum))
-      case _                             => error("schema is not supported")
+      case integer: IntegerSchema =>
+        for {
+          fieldType <- compileInteger(integer, required)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case number: NumberSchema =>
+        for {
+          fieldType <- compileNumber(number, required)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case string: StringSchema =>
+        for {
+          fieldType <- compileString(string, required)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case date: DateSchema =>
+        for {
+          fieldType <- compileDate(date, required)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case date: DateTimeSchema =>
+        for {
+          fieldType <- compileDateTime(date, required)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case boolean: BooleanSchema =>
+        for {
+          fieldType <- compileBoolean(boolean, required)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case _ if schema.get$ref() != null =>
+        for {
+          fieldType <- compileComponentRef(schema)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case array: ArraySchema =>
+        for {
+          fieldType <- compileArrayType(array)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += RepeatedField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case composed: ComposedSchema =>
+        for {
+          _ <- requireNotRef(composed)
+          _ <- requireNotEnum(composed)
+          _ <- require(composed.getAllOf == null, "allOf is not supported")
+          _ <- require(composed.getAnyOf == null, "anyOf is not supported")
+          _ <- require(composed.getOneOf != null, "oneOf is required")
+          oneOf = OneOf.builder(fieldId)
+          valid <- composed.getOneOf.asScala.toVector
+            .traverse[Result, Either[ExitCode, Unit]] { schema =>
+              (for {
+                fieldType <- schema match {
+                  case integer: IntegerSchema       => compileInteger(integer, required = true)
+                  case number: NumberSchema         => compileNumber(number, required = true)
+                  case string: StringSchema         => compileString(string, required = true)
+                  case date: DateSchema             => compileDate(date, required = true)
+                  case date: DateTimeSchema         => compileDateTime(date, required = true)
+                  case boolean: BooleanSchema       => compileBoolean(boolean, required = true)
+                  case ref if ref.get$ref() != null => compileComponentRef(ref)
+                  case schema                       => error(s"schema is not supported at oneOf level: $schema")
+                }
+                fieldName <- compileFieldIdentifierFromType(fieldType)
+                fieldNum <- compileFieldNum(builder, Collections.emptyMap())
+                _ = oneOf += OneOfField(fieldType, fieldName, fieldNum, Vector.empty)
+              } yield ()).attempt
+            }
+            .map(_.forall(_.isRight))
+          _ = builder += oneOf.build
+          _ <- require(valid, "oneOf contains invalid schema")
+        } yield ()
+      case _ => error(s"schema is not supported: $schema")
     }
+
+  def compileFieldNum(builder: MessageBuilder, extensions: Extensions): Result[Int] =
+    for {
+      _ <- info("compile field num")
+      fieldNum = util.extension[Int](extensions, "x-proto-field-id").getOrElse(builder.nextFieldNum)
+    } yield fieldNum
 
   def compileFieldIdentifier(extensions: Extensions, fieldName: String): Result[Identifier] =
     util.extension[String](extensions, "x-proto-field") match {
@@ -372,6 +453,21 @@ object ProtoCompiler {
           _ <- info("x-proto-field is not defined")
           id <- compileIdentifier(util.camelCaseToUnderscore(util.cleanup(fieldName)))
         } yield id
+    }
+
+  def compileFieldIdentifierFromType(id: TypeIdentifier): Result[Identifier] =
+    id match {
+      case Identifier(value) =>
+        for {
+          _ <- info(s"compile field name from type $value")
+          fieldId <- compileIdentifier(util.camelCaseToUnderscore(value))
+        } yield fieldId
+      case FullIdentifier(value) =>
+        for {
+          _ <- info(s"compile field name from type $value")
+          typeName = util.extractIdentifier(value)
+          fieldId <- compileIdentifier(util.camelCaseToUnderscore(typeName))
+        } yield fieldId
     }
 
   def compileInteger(schema: IntegerSchema, required: Boolean): Result[TypeIdentifier] =

@@ -204,6 +204,9 @@ object instances {
 
   implicit val OneOfWriter: Writer[OneOf] = instance { (o, builder) =>
     builder << offset << "oneof " << o.oneOfName << " {" << newline
+    for (field <- o.fields) {
+      builder << field
+    }
     builder << offset << "}" << newline
   }
 
