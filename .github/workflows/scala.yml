@@ -8,5 +8,7 @@ jobs:
     - uses: olafurpg/setup-scala@v5
       with:
         java-version: graalvm@
-    - name: compile
+    - name: Install native image
+      run: gu install native-image
+    - name: Compile and package bin
       run: sbt compile "graalvm-native-image:packageBin"
