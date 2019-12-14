@@ -7,6 +7,6 @@ jobs:
     - uses: actions/checkout@v1
     - uses: olafurpg/setup-scala@v5
       with:
-        graalvm@
+        java-version: graalvm@
     - name: compile
       run: sbt compile
