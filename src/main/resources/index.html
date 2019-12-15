@@ -3,6 +3,12 @@
 <title>openapi2proto</title>
 <link href="https://fonts.googleapis.com/css?family=Roboto+Mono&display=swap" rel="stylesheet">
 <style>
+#editor {
+  margin-bottom: 1em;
+  width:100%;
+  height:600px;
+  border:none;
+}
 .console {
   background: #212121;
   color: #edede3;
@@ -12,6 +18,9 @@
   border: none;
   padding: 1em;
   margin: 10px 0 0 0;
+  min-height: 1em;
+  max-height: 30em;
+  overflow-y: auto;
 }
 .console .white {
   color: white;
@@ -47,7 +56,7 @@ textarea.console {
 
 <form name="compileForm" method="POST" action="/api/compile">
   <div>
-  <textarea class="console" name="editor" rows="20"></textarea>
+  <div id="editor"></div>
   <button type="submit">Compile</button>
   </div>
 </form>
@@ -798,50 +807,149 @@ components:
 #      name: api_key
 #      in: header
 </script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/monaco-editor@0.18.1/min/vs/loader.min.js"></script>
 <script type="text/javascript">
 "use strict";
 (function () {
-  const example = document.getElementById("example").innerText;
-  const form = document.forms["compileForm"];
-  const editor = form.elements["editor"];
-  if(editor.value === "") {
-    editor.value = example.trimStart();
-  }
-  const logs = document.getElementById("logs");
-  const result = document.getElementById("result");
-  form.addEventListener("submit", async function (e) {
-    console.log(e);
-    e.preventDefault();
-    const source = editor.value.trimStart();
-    const action = form.action;
-    const method = form.method;
 
-    logs.innerHTML = "";
-    result.innerHTML = "";
-    const response = await fetch(action, {
-      method: method,
-      body: source
+  require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.18.1/min/vs' }});
+  require(['vs/editor/editor.main'], function() {
+    const example = document.getElementById("example").innerText;
+    const form = document.forms["compileForm"];
+
+    monaco.languages.registerCompletionItemProvider('yaml', {
+      provideCompletionItems: (model, position) => {
+        console.log(model, position);
+        const line = model.getLineContent(position.lineNumber).trimEnd();
+        if(line.endsWith("$ref:")) {
+          const suggestions = [
+            {
+              label: "#/components/schemas/",
+              kind: monaco.languages.CompletionItemKind.Keyword,
+              insertText: "'#/components/schemas/'"
+            }
+          ];
+          return {
+            suggestions: suggestions
+          };
+        }else {
+          const keywords = [
+            'openapi',
+            'servers',
+            'description',
+            'url',
+            'info',
+            'version',
+            'title',
+            'termsOfService',
+            'contact',
+            'email',
+            'license',
+            'name',
+            'url',
+            'x-proto-package',
+            'x-proto-service',
+            'x-proto-field',
+            'x-proto-field-id',
+            'tags',
+            'externalDocs',
+            'paths',
+            'get',
+            'post',
+            'put',
+            'delete',
+            'options',
+            'patch',
+            'summary',
+            'operationId',
+            'responses',
+            'security',
+            'requestBody',
+            'content',
+            'application/json',
+            'application/octet-stream',
+            'schema',
+            'in',
+            'required',
+            'explode',
+            'array',
+            'type',
+            'format',
+            'minimum',
+            'maximum',
+            'example',
+            'properties',
+            'oneOf',
+            'enum',
+          ];
+          const suggestions = keywords.map(function (keyword) {
+            return {
+              label: keyword,
+              kind: monaco.languages.CompletionItemKind.Keyword,
+              insertText: keyword + ": "
+            };
+          });
+          suggestions.push({
+            label: "$ref",
+            kind: monaco.languages.CompletionItemKind.Keyword,
+            insertText: "ref: "
+          });
+          return {
+            suggestions: suggestions
+          };
+        }
+      }
     });
-    const json = await response.json();
-    json.log.map(function (record) {
-      if("Info" in record) {
-        logs.append(green("[INFO   ] "));
-        logs.append(white(record["Info"].message));
-        logs.append("\r\n");
+
+    const editor = monaco.editor.create(document.getElementById('editor'), {
+      theme: 'vs-dark',
+      value: example.trimStart(),
+      language: 'yaml',
+      scrollBeyondLastLine: false,
+      quickSuggestions: true,
+      minimap: {
+        enabled: false
       }
-      if("Warning" in record) {
-        logs.append(yellow("[WARNING] "));
-        logs.append(white(record["Warning"].message));
-        logs.append("\r\n");
-      }
-      if("Error" in record) {
-        logs.append(red("[ERROR  ] "));
-        logs.append(white(record["Error"].message));
-        logs.append("\r\n");
-      }
-    }).join("\n");
-    highlight(result, json.source);
+    });
+
+    const logs = document.getElementById("logs");
+    const result = document.getElementById("result");
+    form.addEventListener("submit", async function (e) {
+      console.log(e, editor.getValue());
+      e.preventDefault();
+      const source = editor.getValue().trimStart();
+      const action = form.action;
+      const method = form.method;
+
+      logs.innerHTML = "";
+      result.innerHTML = "";
+      const response = await fetch(action, {
+        method: method,
+        body: source
+      });
+      const json = await response.json();
+      json.log.map(function (record) {
+        if("Info" in record) {
+          logs.append(green("[INFO   ] "));
+          logs.append(white(record["Info"].message));
+          logs.append("\r\n");
+        }
+        if("Warning" in record) {
+          logs.append(yellow("[WARNING] "));
+          logs.append(white(record["Warning"].message));
+          logs.append("\r\n");
+        }
+        if("Error" in record) {
+          logs.append(red("[ERROR  ] "));
+          logs.append(white(record["Error"].message));
+          logs.append("\r\n");
+        }
+      }).join("\n");
+      highlight(result, json.source);
+    });
   });
+
+
 
   const highlightWords = new Set([
     "syntax",
