@@ -241,7 +241,7 @@ object instances {
   implicit val RpcOptionWriter: Writer[RpcOption] = instance { (opt, builder) =>
     builder << offset << offset << "option (" << opt.identifier << ") = { "
     for (o <- opt.options) {
-      builder << " " << o.optionName << ": " << o.value
+      builder << o.optionName << ": " << o.value << " "
     }
     builder << "}" << end << newline
   }

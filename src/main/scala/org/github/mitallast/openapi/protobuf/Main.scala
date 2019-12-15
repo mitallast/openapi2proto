@@ -1,5 +1,6 @@
 package org.github.mitallast.openapi.protobuf
 
+import java.io.File
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import cats.effect._
@@ -8,7 +9,7 @@ import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
 import io.swagger.v3.parser.OpenAPIV3Parser
-import org.github.mitallast.openapi.protobuf.compiler.{Error, LogMessage, ProtoCompiler}
+import org.github.mitallast.openapi.protobuf.compiler.{Error, Info, LogMessage, ProtoCompiler, Warning}
 import org.github.mitallast.openapi.protobuf.writer.Writer
 import org.http4s._
 import org.http4s.circe._
@@ -89,18 +90,23 @@ object Main extends IOApp {
   }
 
   private def compile(filepath: Path): IO[ExitCode] = IO {
+    val logger = getLogger("compiler")
     val api = new OpenAPIV3Parser().read(filepath.toString)
-    ProtoCompiler.compile(api, filepath.toString) match {
-      case (logging, Left(exitCode)) =>
-        for (message <- logging) println(message)
+    val (logging, result) = ProtoCompiler.compile(api, filepath.toString)
+    logging.foreach {
+      case Info(message)    => logger.info(message)
+      case Warning(message) => logger.warn(message)
+      case Error(message)   => logger.error(message)
+    }
+    result match {
+      case Left(exitCode) =>
         val errors = logging.count {
           case _: Error => true
           case _        => false
         }
-        println(s"errors: $errors")
+        logger.info(s"errors: $errors")
         exitCode
-      case (logging, Right(protoFile)) =>
-        for (message <- logging) println(message)
+      case Right(protoFile) =>
         val source = Writer.writeFile(protoFile)
         println(source)
         Files.write(
@@ -137,7 +143,10 @@ object Main extends IOApp {
     val staticFiles = HttpRoutes.of[IO] {
       case req @ GET -> Root =>
         logger.info("requested /")
-        StaticFile.fromResource("/index.html", ExecutionContext.global, Some(req)).getOrElseF(NotFound())
+        StaticFile
+          .fromFile(new File("src/main/resources/index.html"), ExecutionContext.global, Some(req))
+          .orElse(StaticFile.fromResource("/index.html", ExecutionContext.global, Some(req)))
+          .getOrElseF(NotFound())
       case req @ GET -> "static" /: path =>
         logger.info(s"requested /static/$path")
         StaticFile.fromResource(path.toString, ExecutionContext.global, Some(req)).getOrElseF(NotFound())

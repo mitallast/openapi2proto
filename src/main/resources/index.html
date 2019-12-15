@@ -1,12 +1,59 @@
 <html>
+<head>
+<title>openapi2proto</title>
+<link href="https://fonts.googleapis.com/css?family=Roboto+Mono&display=swap" rel="stylesheet">
+<style>
+.console {
+  background: #212121;
+  color: #edede3;
+  font-family: 'Roboto Mono', Monaco, "Courier New", monospace;
+  font-weight: 200;
+  font-size: 13px;
+  border: none;
+  padding: 1em;
+  margin: 10px 0 0 0;
+}
+.console .white {
+  color: white;
+}
+.console .green {
+  color: green;
+}
+.console .blue {
+  color: deepskyblue;
+}
+.console .purple {
+  color: mediumpurple;
+}
+.console .orange {
+  color: darkorange;
+}
+.console .yellow {
+  color: yellow;
+}
+.console .red {
+  color: red;
+}
+
+textarea.console {
+  display: block;
+  width: 100%;
+  margin-bottom: 1em;
+}
+</style>
+</head>
 <body>
+
+
 <form name="compileForm" method="POST" action="/api/compile">
-  <textarea name="editor"></textarea>
+  <div>
+  <textarea class="console" name="editor" rows="20"></textarea>
   <button type="submit">Compile</button>
+  </div>
 </form>
 
-<textarea id="logs"></textarea>
-<textarea id="result"></textarea>
+<pre class="console" id="logs"></pre>
+<pre class="console" id="result"></pre>
 
 <script id="example" type="application/yaml">
 openapi: 3.0.0
@@ -769,27 +816,108 @@ components:
     const action = form.action;
     const method = form.method;
 
-    logs.value = "";
-    result.value = "";
+    logs.innerHTML = "";
+    result.innerHTML = "";
     const response = await fetch(action, {
       method: method,
       body: source
     });
     const json = await response.json();
-    logs.value = json.log.map(function (record) {
-      console.log(record);
+    json.log.map(function (record) {
       if("Info" in record) {
-        return "[INFO   ]" + record["Info"].message;
+        logs.append(green("[INFO   ] "));
+        logs.append(white(record["Info"].message));
+        logs.append("\r\n");
       }
       if("Warning" in record) {
-        return "[WARNING]" + record["Warning"].message;
+        logs.append(yellow("[WARNING] "));
+        logs.append(white(record["Warning"].message));
+        logs.append("\r\n");
       }
       if("Error" in record) {
-        return "[ERROR  ]" + record["Error"].message;
+        logs.append(red("[ERROR  ] "));
+        logs.append(white(record["Error"].message));
+        logs.append("\r\n");
       }
     }).join("\n");
-    result.value = json.source;
-  })
+    highlight(result, json.source);
+  });
+
+  const highlightWords = new Set([
+    "syntax",
+    "option",
+    "import",
+    "enum",
+    "message",
+    "reserved",
+    "repeated",
+    "map",
+    "oneof",
+    "service",
+    "rpc",
+    "returns",
+    "get",
+    "post",
+    "put",
+    "delete",
+    "head",
+    "options",
+    "string",
+    "int64",
+    "int32",
+    "boolean",
+    "float",
+    "double",
+    "bytes",
+  ]);
+  function highlight(root, text) {
+    text.split(/\r?\n/gm) // split to lines
+    .forEach(function (line) {
+      line.split(/(\s|"[^"]+"|[{}()=;,])/g) // split to tokens
+        .forEach(function (token) {
+          console.log("token:", token);
+          if(highlightWords.has(token)) {
+            root.append(orange(token));
+          } else if (token.match(/^\d+$/)) {
+            root.append(blue(token));
+          } else if (token.match(/^".+"$/)) {
+            root.append(green(token));
+          } else if (token.match(/^[A-Z][A-Z0-9_]+$/)) {
+            root.append(purple(token));
+          } else {
+            root.append(white(token));
+          }
+        });
+      root.append("\n");
+    });
+  }
+  function colored(color, text) {
+    const span = document.createElement("span");
+    span.append(text);
+    span.classList.add(color);
+    return span;
+  }
+  function white(text) {
+    return colored("white", text)
+  }
+  function blue(text) {
+    return colored("blue", text)
+  }
+  function orange(text) {
+    return colored("orange", text)
+  }
+  function purple(text) {
+    return colored("purple", text)
+  }
+  function green(text) {
+    return colored("green", text)
+  }
+  function yellow(text) {
+    return colored("yellow", text)
+  }
+  function red(text) {
+    return colored("red", text)
+  }
 })();
 </script>
 </body>
