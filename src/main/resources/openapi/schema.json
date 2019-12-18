@@ -801,9 +801,6 @@
     "PathItem": {
       "type": "object",
       "properties": {
-        "$ref": {
-          "type": "string"
-        },
         "summary": {
           "type": "string"
         },
@@ -815,20 +812,6 @@
           "items": {
             "$ref": "#/definitions/Server"
           }
-        },
-        "parameters": {
-          "type": "array",
-          "items": {
-            "oneOf": [
-              {
-                "$ref": "#/definitions/Parameter"
-              },
-              {
-                "$ref": "#/definitions/Reference"
-              }
-            ]
-          },
-          "uniqueItems": true
         }
       },
       "patternProperties": {
@@ -843,7 +826,8 @@
     "Operation": {
       "type": "object",
       "required": [
-        "responses"
+        "responses",
+        "operationId"
       ],
       "properties": {
         "tags": {
@@ -870,9 +854,6 @@
             "oneOf": [
               {
                 "$ref": "#/definitions/Parameter"
-              },
-              {
-                "$ref": "#/definitions/Reference"
               }
             ]
           },
@@ -882,9 +863,6 @@
           "oneOf": [
             {
               "$ref": "#/definitions/RequestBody"
-            },
-            {
-              "$ref": "#/definitions/Reference"
             }
           ]
         },
@@ -934,9 +912,6 @@
           "oneOf": [
             {
               "$ref": "#/definitions/Response"
-            },
-            {
-              "$ref": "#/definitions/Reference"
             }
           ]
         }
@@ -946,9 +921,6 @@
           "oneOf": [
             {
               "$ref": "#/definitions/Response"
-            },
-            {
-              "$ref": "#/definitions/Reference"
             }
           ]
         },
