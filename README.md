@@ -38,7 +38,7 @@ sudo spctl --master-disable
 Add it to path
 
 ```shell script
-export PATH=/Library/Java/JavaVirtualMachines/graalvm-ce-java11-19.3.0/Contents/Home/bin:"$PATH"
+export PATH="$PATH":/Library/Java/JavaVirtualMachines/graalvm-ce-java11-19.3.0/Contents/Home/bin
 ```
 
 ## Install native-image

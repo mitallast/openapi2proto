@@ -21,12 +21,12 @@ object Dependencies {
 
     val scopt = "com.github.scopt" %% "scopt" % "4.0.0-RC2"
 
-    val http4sVersion = "0.20.15"
+    val http4sVersion = "0.21.0-M6"
     val http4sDsl = "org.http4s" %% "http4s-dsl" % http4sVersion
     val http4sServer = "org.http4s" %% "http4s-blaze-server" % http4sVersion
     val http4sCirce = "org.http4s" %% "http4s-circe" % http4sVersion
 
-    val circeGeneric = "io.circe" %% "circe-generic" % "0.11.2"
+    val circeGeneric = "io.circe" %% "circe-generic" % "0.12.3"
 
     val swaggerParser = "io.swagger.parser.v3" % "swagger-parser" % "2.0.16" excludeAll (
       ExclusionRule(organization = "io.swagger.parser.v3", name = "swagger-parser-v2-converter"),

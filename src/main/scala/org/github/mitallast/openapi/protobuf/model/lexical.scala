@@ -25,7 +25,7 @@ object lexical {
     val charEscape = "(\\[abfnrtv\\\'\"])"
     val octEscape = s"(\\$octalDigit$octalDigit$octalDigit)"
     val hexEscape = s"(\\[xX]$hexDigit$hexDigit)"
-    val charVal: String = s"""($hexEscape|$octEscape|$charEscape|[^\\n\\r\\\\\\\0])"""
+    val charVal: String = s"""($hexEscape|$octEscape|$charEscape|[^\\n\\r\\\\])"""
     val strLit: String = s"""('($charVal)+'|"($charVal)+")"""
     val constant = s"($fullIdent|[-+]$intLit|[-+]$floatLit|$strLit|$boolLit)"
   }

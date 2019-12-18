@@ -4,7 +4,7 @@ import java.util.Collections
 
 import io.swagger.v3.oas.models.media.ObjectSchema
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
 private[compiler] object util {
@@ -37,4 +37,5 @@ private[compiler] object util {
     extension[java.util.List[Int]](schema.getExtensions, "x-proto-reserved")
       .getOrElse(Collections.emptyList())
       .asScala
+      .toSeq
 }

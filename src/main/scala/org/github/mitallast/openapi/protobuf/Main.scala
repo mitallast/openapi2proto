@@ -39,6 +39,8 @@ final case class CompileResponse(log: Vector[LogMessage], source: Option[String]
 object Main extends IOApp {
   System.setProperty("org.slf4j.simpleLogger.showShortLogName", "true")
 
+  private val blocker = Blocker.liftExecutionContext(ExecutionContext.global)
+
   private implicit val pathRead: Read[Path] = Read.reads { Paths.get(_) }
 
   private val builder = OParser.builder[Config]
@@ -125,10 +127,10 @@ object Main extends IOApp {
       case request @ POST -> Root / "compile" =>
         request.decode[String] { yaml =>
           for {
-            source <- IO {
+            source <- blocker.delay[IO, CompileResponse] {
               val api = new OpenAPIV3Parser().readContents(yaml).getOpenAPI
               ProtoCompiler.compile(api, "source.proto") match {
-                case (logs, Left(exitCode)) =>
+                case (logs, Left(_)) =>
                   CompileResponse(logs, None)
                 case (logs, Right(protoFile)) =>
                   val source = Writer.writeFile(protoFile)
@@ -144,13 +146,13 @@ object Main extends IOApp {
       case req @ GET -> Root =>
         logger.info("requested /")
         StaticFile
-          .fromFile(new File("src/main/resources/index.html"), ExecutionContext.global, Some(req))
-          .orElse(StaticFile.fromResource("/index.html", ExecutionContext.global, Some(req)))
+          .fromFile(new File("src/main/resources/index.html"), blocker, Some(req))
+          .orElse(StaticFile.fromResource("/index.html", blocker, Some(req)))
           .getOrElseF(NotFound())
       case req @ GET -> "static" /: path =>
         logger.info(s"requested $path")
         StaticFile
-          .fromResource(path.toString, ExecutionContext.global, Some(req))
+          .fromResource(path.toString, blocker, Some(req))
           .getOrElseF(NotFound())
     }
 

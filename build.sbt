@@ -1,8 +1,8 @@
 name := "openapi2proto"
 
-version := "0.1"
+version := "0.2"
 
-scalaVersion := "2.12.10"
+scalaVersion := "2.13.1"
 
 resolvers ++= Dependencies.resolvers
 
@@ -15,28 +15,27 @@ scalacOptions ++= Seq(
   "-explaintypes",
   "-feature",
   "-language:_",
-  // "-release",
-  // "10",
+//  "-release",
+//  "11",
   "-opt:l:inline",
   "-opt-warnings:_",
   "-unchecked",
   // "-Xcheckinit",
-  "-Xexperimental",
+//  "-Xexperimental",
   // "-Xfatal-warnings",
-  "-Xfuture",
+//  "-Xfuture",
   "-Xlint:_",
-  "-Xsource:2.13",
+//  "-Xsource:2.13",
   "-Ybackend-parallelism",
   "8",
-  "-Yno-adapted-args",
-  "-Ypartial-unification",
+//  "-Ypartial-unification",
   // "-Ystatistics",
   "-Ywarn-dead-code",
   "-Ywarn-extra-implicit",
-  "-Ywarn-inaccessible",
-  "-Ywarn-infer-any",
-  "-Ywarn-nullary-override",
-  "-Ywarn-nullary-unit",
+//  "-Ywarn-inaccessible",
+//  "-Ywarn-infer-any",
+//  "-Ywarn-nullary-override",
+//  "-Ywarn-nullary-unit",
   "-Ywarn-numeric-widen",
   "-Ywarn-unused:_",
   "-Ywarn-value-discard"
@@ -49,8 +48,8 @@ javaOptions in (Test, run) ++= Seq(
   "-Dscala.concurrent.context.maxExtraThreads=0",
   "-Duser.timezone=Europe/Moscow",
   "-server",
-  // "-Xms2g",
-  // "-Xmx4g",
+  "-Xms2g",
+  "-Xmx4g",
   "-Xss6m",
   "-XX:+AggressiveOpts",
   "-XX:+AlwaysPreTouch",
@@ -82,10 +81,24 @@ javaOptions in (Test, run) ++= Seq(
   "-XX:TargetSurvivorRatio=90"
 )
 
+addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
+
+// GraalVM packaging
+
+enablePlugins(GraalVMNativeImagePlugin)
+
 graalVMNativeImageOptions += "--no-fallback"
 graalVMNativeImageOptions += "--allow-incomplete-classpath"
 graalVMNativeImageOptions += "--report-unsupported-elements-at-runtime"
 
-enablePlugins(GraalVMNativeImagePlugin)
+// RPM packaging
 
-addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
+enablePlugins(JavaServerAppPackaging, RpmPlugin, SystemdPlugin)
+
+normalizedName := "openapi2proto"
+packageName in Rpm := normalizedName.value
+rpmVendor := "org.github.mitallast"
+rpmLicense := Some("MIT")
+daemonUser in Linux := "openapi2proto"
+daemonGroup in Linux := "openapi2proto"
+javaOptions in Universal ++= Seq("server", "--host 0.0.0.0", "--port 8081")
