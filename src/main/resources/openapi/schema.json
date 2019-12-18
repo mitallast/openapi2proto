@@ -205,21 +205,6 @@
             }
           }
         },
-        "responses": {
-          "type": "object",
-          "patternProperties": {
-            "^[a-zA-Z0-9\\.\\-_]+$": {
-              "oneOf": [
-                {
-                  "$ref": "#/definitions/Reference"
-                },
-                {
-                  "$ref": "#/definitions/Response"
-                }
-              ]
-            }
-          }
-        },
         "parameters": {
           "type": "object",
           "patternProperties": {
@@ -245,21 +230,6 @@
                 },
                 {
                   "$ref": "#/definitions/Example"
-                }
-              ]
-            }
-          }
-        },
-        "requestBodies": {
-          "type": "object",
-          "patternProperties": {
-            "^[a-zA-Z0-9\\.\\-_]+$": {
-              "oneOf": [
-                {
-                  "$ref": "#/definitions/Reference"
-                },
-                {
-                  "$ref": "#/definitions/RequestBody"
                 }
               ]
             }
