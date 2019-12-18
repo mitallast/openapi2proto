@@ -811,146 +811,86 @@ components:
 <script type="text/javascript">
 "use strict";
 (function () {
+  require.config({
+    paths: {
+      'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.18.1/min/vs',
+      'vs/language/yaml': document.location.origin + '/static/monaco-yaml',
+    }
+  });
+  require(['vs/editor/editor.main'], async function() {
+    const request = await fetch("/static/openapi/schema.json");
+    const openapi = await request.json();
 
-  require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.18.1/min/vs' }});
-  require(['vs/editor/editor.main'], function() {
-    const example = document.getElementById("example").innerText;
-    const form = document.forms["compileForm"];
+    require(['vs/language/yaml/monaco.contribution'], function () {
 
-    monaco.languages.registerCompletionItemProvider('yaml', {
-      provideCompletionItems: (model, position) => {
-        console.log(model, position);
-        const line = model.getLineContent(position.lineNumber).trimEnd();
-        if(line.endsWith("$ref:")) {
-          const suggestions = [
-            {
-              label: "#/components/schemas/",
-              kind: monaco.languages.CompletionItemKind.Keyword,
-              insertText: "'#/components/schemas/'"
-            }
-          ];
-          return {
-            suggestions: suggestions
-          };
-        }else {
-          const keywords = [
-            'openapi',
-            'servers',
-            'description',
-            'url',
-            'info',
-            'version',
-            'title',
-            'termsOfService',
-            'contact',
-            'email',
-            'license',
-            'name',
-            'url',
-            'x-proto-package',
-            'x-proto-service',
-            'x-proto-field',
-            'x-proto-field-id',
-            'tags',
-            'externalDocs',
-            'paths',
-            'get',
-            'post',
-            'put',
-            'delete',
-            'options',
-            'patch',
-            'summary',
-            'operationId',
-            'responses',
-            'security',
-            'requestBody',
-            'content',
-            'application/json',
-            'application/octet-stream',
-            'schema',
-            'in',
-            'required',
-            'explode',
-            'array',
-            'type',
-            'format',
-            'minimum',
-            'maximum',
-            'example',
-            'properties',
-            'oneOf',
-            'enum',
-          ];
-          const suggestions = keywords.map(function (keyword) {
-            return {
-              label: keyword,
-              kind: monaco.languages.CompletionItemKind.Keyword,
-              insertText: keyword + ": "
-            };
-          });
-          suggestions.push({
-            label: "$ref",
-            kind: monaco.languages.CompletionItemKind.Keyword,
-            insertText: "ref: "
-          });
-          return {
-            suggestions: suggestions
-          };
+      const modelUri = monaco.Uri.parse('openapi://b/foo.json');
+      const example = document.getElementById("example").innerText;
+      const editor = monaco.editor.create(document.getElementById('editor'), {
+        language: 'yaml',
+        model: monaco.editor.createModel(example.trimStart(), 'yaml', modelUri),
+
+        theme: 'vs-dark',
+        automaticLayout: true,
+        showFoldingControls: 'always',
+        scrollBeyondLastLine: false,
+        quickSuggestions: true,
+        minimap: {
+          enabled: false
         }
-      }
-    });
-
-    const editor = monaco.editor.create(document.getElementById('editor'), {
-      theme: 'vs-dark',
-      value: example.trimStart(),
-      language: 'yaml',
-      automaticLayout: true,
-      scrollBeyondLastLine: false,
-      quickSuggestions: true,
-      minimap: {
-        enabled: false
-      }
-    });
-
-    const logs = document.getElementById("logs");
-    const result = document.getElementById("result");
-    form.addEventListener("submit", async function (e) {
-      console.log(e, editor.getValue());
-      e.preventDefault();
-      const source = editor.getValue().trimStart();
-      const action = form.action;
-      const method = form.method;
-
-      logs.innerHTML = "";
-      result.innerHTML = "";
-      const response = await fetch(action, {
-        method: method,
-        body: source
       });
-      const json = await response.json();
-      json.log.map(function (record) {
-        if("Info" in record) {
-          logs.append(green("[INFO   ] "));
-          logs.append(white(record["Info"].message));
-          logs.append("\r\n");
-        }
-        if("Warning" in record) {
-          logs.append(yellow("[WARNING] "));
-          logs.append(white(record["Warning"].message));
-          logs.append("\r\n");
-        }
-        if("Error" in record) {
-          logs.append(red("[ERROR  ] "));
-          logs.append(white(record["Error"].message));
-          logs.append("\r\n");
-        }
-      }).join("\n");
-      highlight(result, json.source);
+
+      monaco.languages.yaml.yamlDefaults.setDiagnosticsOptions({
+        enableSchemaRequest: true,
+        validate: true,
+        hover: true,
+        completion: true,
+        schemas: [
+          {
+            uri: openapi['$schema'],
+            fileMatch: [modelUri.toString()], // associate with our model
+            schema: openapi
+          }
+        ],
+      });
+
+      const logs = document.getElementById("logs");
+      const result = document.getElementById("result");
+      const form = document.forms["compileForm"];
+      form.addEventListener("submit", async function (e) {
+        console.log(e, editor.getValue());
+        e.preventDefault();
+        const source = editor.getValue().trimStart();
+        const action = form.action;
+        const method = form.method;
+
+        logs.innerHTML = "";
+        result.innerHTML = "";
+        const response = await fetch(action, {
+          method: method,
+          body: source
+        });
+        const json = await response.json();
+        json.log.map(function (record) {
+          if("Info" in record) {
+            logs.append(green("[INFO   ] "));
+            logs.append(white(record["Info"].message));
+            logs.append("\r\n");
+          }
+          if("Warning" in record) {
+            logs.append(yellow("[WARNING] "));
+            logs.append(white(record["Warning"].message));
+            logs.append("\r\n");
+          }
+          if("Error" in record) {
+            logs.append(red("[ERROR  ] "));
+            logs.append(white(record["Error"].message));
+            logs.append("\r\n");
+          }
+        }).join("\n");
+        highlight(result, json.source);
+      });
     });
   });
-
-
 
   const highlightWords = new Set([
     "syntax",

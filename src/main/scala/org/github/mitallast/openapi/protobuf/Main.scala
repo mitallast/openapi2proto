@@ -29,8 +29,8 @@ case object Server extends Command
 
 final case class Config(
   command: Command = Help,
-  filepath: Path = Path.of("petstore.yaml"),
-  port: Int = 8080,
+  filepath: Path = Paths.get("petstore.yaml"),
+  port: Int = 8081,
   host: String = "localhost"
 )
 
@@ -39,7 +39,7 @@ final case class CompileResponse(log: Vector[LogMessage], source: Option[String]
 object Main extends IOApp {
   System.setProperty("org.slf4j.simpleLogger.showShortLogName", "true")
 
-  private implicit val pathRead: Read[Path] = Read.reads { Path.of(_) }
+  private implicit val pathRead: Read[Path] = Read.reads { Paths.get(_) }
 
   private val builder = OParser.builder[Config]
 
@@ -148,8 +148,10 @@ object Main extends IOApp {
           .orElse(StaticFile.fromResource("/index.html", ExecutionContext.global, Some(req)))
           .getOrElseF(NotFound())
       case req @ GET -> "static" /: path =>
-        logger.info(s"requested /static/$path")
-        StaticFile.fromResource(path.toString, ExecutionContext.global, Some(req)).getOrElseF(NotFound())
+        logger.info(s"requested $path")
+        StaticFile
+          .fromResource(path.toString, ExecutionContext.global, Some(req))
+          .getOrElseF(NotFound())
     }
 
     val httpApp = Router("/api" -> api, "/" -> staticFiles).orNotFound
