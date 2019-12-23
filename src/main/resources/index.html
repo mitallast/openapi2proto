@@ -823,7 +823,7 @@ components:
 
     require(['vs/language/yaml/monaco.contribution'], function () {
 
-      const modelUri = monaco.Uri.parse('openapi://b/foo.json');
+      const modelUri = monaco.Uri.parse('schema://openapi.json');
       const example = document.getElementById("example").innerText;
       const editor = monaco.editor.create(document.getElementById('editor'), {
         language: 'yaml',
