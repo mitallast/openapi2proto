@@ -29,7 +29,6 @@ import org.github.mitallast.openapi.protobuf.model.{
   ImportStatement,
   Message,
   MessageBuilder,
-  MessageField,
   NormalField,
   OneOf,
   OneOfField,
@@ -45,7 +44,7 @@ import org.github.mitallast.openapi.protobuf.model.{
   TypeIdentifier
 }
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 sealed trait LogMessage
 final case class Info(message: String) extends LogMessage {
@@ -97,6 +96,16 @@ object ProtoCompiler {
         } yield id
     }
 
+  def compileSchemas(api: OpenAPI): Result[Map[String, Schema[_]]] =
+    EitherT.pure(Option(api.getComponents.getSchemas).map(_.asScala.toMap).getOrElse(Map.empty))
+
+  def compileSchemaRef(api: OpenAPI, ref: String): Result[Schema[_]] =
+    for {
+      schemas <- compileSchemas(api)
+      _ <- require(schemas.contains(ref), s"component schema $ref does not exists")
+      schema = api.getComponents.getSchemas.get(ref)
+    } yield schema
+
   def compileFullIdentifier(value: String): Result[FullIdentifier] =
     if (lexical.validate(value, lexical.identifiers.fullIdent)) {
       EitherT.pure(FullIdentifier(value))
@@ -113,21 +122,26 @@ object ProtoCompiler {
     } else error("not valid identifier")
 
   def compileComponents(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
-    Option(api.getComponents.getSchemas)
-      .map(_.asScala)
-      .getOrElse(Map.empty)
-      .toVector
-      .traverse[Result, Either[ExitCode, Unit]] {
-        case (typeName, schema: ObjectSchema) =>
-          compileComponentObject(protoFile, typeName, schema).attempt
-        case (typeName, schema: StringSchema) if schema.getEnum != null =>
-          compileComponentEnum(protoFile, typeName, schema).attempt
-        case (typeName, _) =>
-          warning(s"ignore component: $typeName").attempt
-      }
-      .map(_.forall(_.isRight))
+    for {
+      schemas <- compileSchemas(api)
+      _ <- schemas.toVector
+        .traverse[Result, Either[ExitCode, Unit]] {
+          case (typeName, schema: ObjectSchema) =>
+            compileComponentObject(protoFile, typeName, api, schema).attempt
+          case (typeName, schema: StringSchema) if schema.getEnum != null =>
+            compileComponentEnum(protoFile, typeName, schema).attempt
+          case (typeName, _) =>
+            warning(s"ignore component: $typeName").attempt
+        }
+        .map(_.forall(_.isRight))
+    } yield true
 
-  def compileComponentObject(protoFile: ProtoFileBuilder, typeName: String, schema: ObjectSchema): Result[Unit] =
+  def compileComponentObject(
+    protoFile: ProtoFileBuilder,
+    typeName: String,
+    api: OpenAPI,
+    schema: ObjectSchema
+  ): Result[Unit] =
     for {
       _ <- info(s"message=$typeName schema=${schema.getType}")
       _ <- requireNotRef(schema)
@@ -142,7 +156,7 @@ object ProtoCompiler {
         .traverse[Result, Either[ExitCode, Unit]] {
           case (fieldName, schema) =>
             val required = requiredFields.contains(fieldName)
-            compileField(messageBuilder, fieldName, schema, schema.getExtensions, required).attempt
+            compileField(messageBuilder, fieldName, api, schema, schema.getExtensions, required).attempt
         }
         .map(_.forall(_.isRight))
       _ <- require(valid, "contains invalid fields")
@@ -198,7 +212,7 @@ object ProtoCompiler {
         }
         .traverse[Result, Either[ExitCode, Unit]] {
           case (path, method, op) =>
-            compileRpc(protoFile, serviceBuilder, method, path, op).attempt
+            compileRpc(protoFile, serviceBuilder, method, path, op, api).attempt
         }
         .map(_.forall(_.isRight))
       _ = protoFile += serviceBuilder.build
@@ -209,7 +223,8 @@ object ProtoCompiler {
     service: ServiceBuilder,
     method: PathItem.HttpMethod,
     path: String,
-    op: Operation
+    op: Operation,
+    api: OpenAPI
   ): Result[Unit] =
     for {
       _ <- require(op.getOperationId != null, "require operationId")
@@ -230,7 +245,7 @@ object ProtoCompiler {
               _ <- require(p.getName.nonEmpty, "parameter name is required")
               _ <- require(p.getSchema != null, "parameter schema is required")
               _ <- requireNotRef(p.getSchema)
-              _ <- compileField(requestBuilder, p.getName, p.getSchema, p.getExtensions, p.getRequired)
+              _ <- compileField(requestBuilder, p.getName, api, p.getSchema, p.getExtensions, p.getRequired)
             } yield ()).attempt
           }
           .map(_.forall(_.isRight))
@@ -245,7 +260,8 @@ object ProtoCompiler {
             requestBuilder,
             op.getRequestBody.getContent,
             "request_body",
-            Identifier("body")
+            Identifier("body"),
+            api
           ).attempt
         } yield result.isRight
       else info("no request body").map(_ => true)
@@ -281,7 +297,8 @@ object ProtoCompiler {
                   responseBuilder,
                   response.getContent,
                   "response_body",
-                  Identifier("response_body")
+                  Identifier("response_body"),
+                  api
                 ).attempt
               } yield result.isRight
           } yield true
@@ -305,7 +322,8 @@ object ProtoCompiler {
     builder: MessageBuilder,
     content: Content,
     fieldName: String,
-    context: Identifier
+    context: Identifier,
+    api: OpenAPI
   ): Result[Unit] =
     for {
       _ <- info("compile content")
@@ -318,7 +336,7 @@ object ProtoCompiler {
       fieldId <- compileFieldIdentifier(media.getExtensions, fieldName)
       _ = mediaType match {
         case "application/json" =>
-          compileField(builder, fieldId, schema, media.getExtensions, required = true)
+          compileField(builder, fieldId, api, schema, media.getExtensions, required = true)
         case "text/plain" =>
           for {
             _ <- require(schema.getType == "string", s"$fieldName: schema type should be string")
@@ -339,6 +357,7 @@ object ProtoCompiler {
   def compileField(
     builder: MessageBuilder,
     fiendName: String,
+    api: OpenAPI,
     schema: Schema[_],
     extensions: Extensions,
     required: Boolean
@@ -346,13 +365,14 @@ object ProtoCompiler {
     for {
       _ <- info(s"compile field: $fiendName")
       fieldIdentifier <- compileFieldIdentifier(extensions, fiendName)
-      _ <- compileField(builder, fieldIdentifier, schema, extensions, required)
+      _ <- compileField(builder, fieldIdentifier, api, schema, extensions, required)
       _ <- info(s"compile field: $fiendName done")
     } yield ()
 
   def compileField(
     builder: MessageBuilder,
     fieldId: Identifier,
+    api: OpenAPI,
     schema: Schema[_],
     extensions: Extensions,
     required: Boolean
@@ -396,13 +416,13 @@ object ProtoCompiler {
         } yield ()
       case _ if schema.get$ref() != null =>
         for {
-          fieldType <- compileComponentRef(schema)
+          fieldType <- compileComponentRef(api, schema)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
       case array: ArraySchema =>
         for {
-          fieldType <- compileArrayType(array)
+          fieldType <- compileArrayType(api, array)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += RepeatedField(fieldType, fieldId, fieldNum)
         } yield ()
@@ -424,7 +444,7 @@ object ProtoCompiler {
                   case date: DateSchema             => compileDate(date, required = true)
                   case date: DateTimeSchema         => compileDateTime(date, required = true)
                   case boolean: BooleanSchema       => compileBoolean(boolean, required = true)
-                  case ref if ref.get$ref() != null => compileComponentRef(ref)
+                  case ref if ref.get$ref() != null => compileComponentRef(api, ref)
                   case schema                       => error(s"schema is not supported at oneOf level: $schema")
                 }
                 fieldName <- compileFieldIdentifierFromType(fieldType)
@@ -539,17 +559,33 @@ object ProtoCompiler {
       if (required) Identifier("bool")
       else FullIdentifier("google.protobuf.BoolValue")
 
-  def compileComponentRef(schema: Schema[_]): Result[TypeIdentifier] =
+  def compileComponentRef(api: OpenAPI, schema: Schema[_]): Result[TypeIdentifier] =
     for {
-      _ <- info("compile component ref")
+      _ <- info(s"compile component ref: ${schema.get$ref()}")
       _ <- requireNotEnum(schema)
-      typeName <- schema.get$ref() match {
-        case util.schemaRef(name) => compileTypeName(name)
-        case _                    => error(s"unsupported ref: ${schema.get$ref()}")
+      ref <- schema.get$ref() match {
+        case util.schemaRef(ref) => EitherT.pure[Logging, ExitCode](ref)
+        case _                   => error(s"unsupported ref: ${schema.get$ref()}")
+      }
+      refSchema <- compileSchemaRef(api, ref)
+      typeName: TypeIdentifier <- refSchema match {
+        case integer: IntegerSchema => compileInteger(integer, required = true)
+        case number: NumberSchema   => compileNumber(number, required = true)
+        case string: StringSchema =>
+          if (string.getEnum == null)
+            compileString(string, required = true)
+          else
+            compileTypeName(ref)
+        case date: DateSchema       => compileDate(date, required = true)
+        case date: DateTimeSchema   => compileDateTime(date, required = true)
+        case boolean: BooleanSchema => compileBoolean(boolean, required = true)
+        case _: ArraySchema         => error(s"array schema is not supported: ${schema.get$ref()}")
+        case _: ObjectSchema        => compileTypeName(ref)
+        case _                      => error(s"schema is not supported: ${schema.get$ref()}")
       }
     } yield typeName
 
-  def compileArrayType(schema: ArraySchema): Result[TypeIdentifier] =
+  def compileArrayType(api: OpenAPI, schema: ArraySchema): Result[TypeIdentifier] =
     for {
       _ <- info("compile array type")
       _ <- requireNotRef(schema)
@@ -565,7 +601,7 @@ object ProtoCompiler {
         case date: DateTimeSchema         => compileDateTime(date, required = true)
         case boolean: BooleanSchema       => compileBoolean(boolean, required = true)
         case _: ArraySchema               => error("nested array schema is not supported")
-        case _ if items.get$ref() != null => compileComponentRef(schema.getItems)
+        case _ if items.get$ref() != null => compileComponentRef(api, schema.getItems)
         case _                            => error(s"items schema is not supported: $items")
       }
     } yield format

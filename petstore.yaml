@@ -593,6 +593,10 @@ components:
         - placed
         - approved
         - delivered
+    OrderID:
+      type: integer
+      format: int64
+      description: Номер документа
     Order:
       type: object
       x-proto-reserved:
@@ -602,8 +606,7 @@ components:
       properties:
         id:
           x-proto-field-id: 4
-          type: integer
-          format: int64
+          $ref: '#/components/schemas/OrderID'
         petId:
           type: integer
           format: int64
