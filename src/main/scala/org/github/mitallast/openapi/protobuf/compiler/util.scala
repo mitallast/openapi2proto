@@ -1,10 +1,5 @@
 package org.github.mitallast.openapi.protobuf.compiler
 
-import java.util.Collections
-
-import io.swagger.v3.oas.models.media.ObjectSchema
-
-import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
 private[compiler] object util {
@@ -22,20 +17,6 @@ private[compiler] object util {
     "_([a-zA-Z])".r.replaceAllIn(string, _.group(1).toUpperCase())
 
   def extractIdentifier(string: String): String = string match {
-    case extractIdentifierRegex(packageName, identifier) => identifier
+    case extractIdentifierRegex(_, identifier) => identifier
   }
-
-  def extension[T](ext: java.util.Map[String, Object], key: String): Option[T] =
-    Option(ext)
-      .getOrElse(Collections.emptyMap())
-      .asScala
-      .toMap
-      .get(key)
-      .map(s => s.asInstanceOf[T])
-
-  def reserved(schema: ObjectSchema): Seq[Int] =
-    extension[java.util.List[Int]](schema.getExtensions, "x-proto-reserved")
-      .getOrElse(Collections.emptyList())
-      .asScala
-      .toSeq
 }

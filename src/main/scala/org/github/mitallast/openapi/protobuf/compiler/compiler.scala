@@ -1,78 +1,163 @@
 package org.github.mitallast.openapi.protobuf.compiler
 
 import java.nio.file.Paths
-import java.util.Collections
 
 import cats.data._
 import cats.effect.ExitCode
 import cats.implicits._
-import io.swagger.v3.oas.models.{OpenAPI, Operation, PathItem}
-import io.swagger.v3.oas.models.media.{
-  ArraySchema,
-  BooleanSchema,
-  ComposedSchema,
-  Content,
-  DateSchema,
-  DateTimeSchema,
-  IntegerSchema,
-  NumberSchema,
-  ObjectSchema,
-  Schema,
-  StringSchema
-}
-import org.github.mitallast.openapi.protobuf.model.{
-  lexical,
-  Enum,
-  EnumValue,
-  FullIdentifier,
-  Identifier,
-  ImportStatement,
-  Message,
-  MessageBuilder,
-  NormalField,
-  OneOf,
-  OneOfField,
-  OptionStatement,
-  ProtoFile,
-  ProtoFileBuilder,
-  RepeatedField,
-  RpcOption,
-  RpcOptionBuilder,
-  RpcStatement,
-  Service,
-  ServiceBuilder,
-  TypeIdentifier
-}
+import org.github.mitallast.openapi.protobuf.logging._
+import org.github.mitallast.openapi.protobuf.parser._
+import org.github.mitallast.openapi.protobuf.model._
+import org.yaml.snakeyaml.nodes.{Node, ScalarNode, SequenceNode}
 
 import scala.jdk.CollectionConverters._
 
-sealed trait LogMessage
-final case class Info(message: String) extends LogMessage {
-  override def toString: String = s"[INFO   ] $message"
-}
-final case class Warning(message: String) extends LogMessage {
-  override def toString: String = s"[WARNING] $message"
-}
-final case class Error(message: String) extends LogMessage {
-  override def toString: String = s"[ERROR  ] $message"
+object extractors {
+  object IntegerSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.INTEGER_TYPE) => Some(schema)
+            case _                             => None
+          }
+        case _ => None
+      }
+  }
+  object NumberSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.NUMBER_TYPE) => Some(schema)
+            case _                            => None
+          }
+        case _ => None
+      }
+  }
+  object StringSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.STRING_TYPE)
+                if (schema.format.isEmpty
+                  && schema.enum.isEmpty) =>
+              Some(schema)
+            case _ => None
+          }
+        case _ => None
+      }
+  }
+  object BinaryStringSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.STRING_TYPE)
+                if (schema.format.contains(FormatType.BINARY_FORMAT)
+                  && schema.enum.isEmpty) =>
+              Some(schema)
+            case _ => None
+          }
+        case _ => None
+      }
+  }
+  object DateSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.STRING_TYPE)
+                if (schema.format.contains(FormatType.DATE_FORMAT)
+                  && schema.enum.isEmpty) =>
+              Some(schema)
+            case _ => None
+          }
+        case _ => None
+      }
+  }
+  object DateTimeSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.STRING_TYPE)
+                if (schema.format.contains(FormatType.DATE_TIME_FORMAT) && schema.enum.isEmpty) =>
+              Some(schema)
+            case _ => None
+          }
+        case _ => None
+      }
+  }
+  object BooleanSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.BOOLEAN_TYPE) => Some(schema)
+            case _                             => None
+          }
+        case _ => None
+      }
+  }
+  object ArraySchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal =>
+          schema.`type` match {
+            case Some(SchemaType.ARRAY_TYPE) => Some(schema)
+            case _                           => None
+          }
+        case _ => None
+      }
+  }
+  object OneOfSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal
+            if (schema.allOf.isEmpty
+              && schema.anyOf.isEmpty
+              && schema.oneOf.nonEmpty) =>
+          Some(schema)
+        case _ => None
+      }
+  }
+  object ObjectSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal if schema.`type`.contains(SchemaType.OBJECT_TYPE) => Some(schema)
+        case _                                                                      => None
+      }
+  }
+
+  object EnumSchema {
+    def unapply(value: Schema): Option[SchemaNormal] =
+      value match {
+        case schema: SchemaNormal if schema.enum.nonEmpty => Some(schema)
+        case _                                            => None
+      }
+  }
 }
 
 object ProtoCompiler {
-  type Extensions = java.util.Map[String, Object]
+  import extractors._
+
+  type Extensions = ScalarMap[String, Node]
 
   type Logging[A] = Writer[Vector[LogMessage], A]
   type Result[A] = EitherT[Logging, ExitCode, A]
 
-  def log(message: LogMessage): Result[Unit] = EitherT.liftF(Writer.tell(Vector(message)))
-  def info(message: String): Result[Unit] = log(Info(message))
-  def warning(message: String): Result[Unit] = log(Warning(message))
-  def error[A](err: Error): Result[A] = log(err).flatMap(_ => EitherT.leftT(ExitCode.Error))
-  def error[A](message: String): Result[A] = error(Error(message))
+  @inline def log(message: LogMessage): Result[Unit] = EitherT.liftF(Writer.tell(Vector(message)))
+  @inline def info(node: Node, message: String): Result[Unit] = log(InfoMessage(node.getStartMark, message))
+  @inline def warning(node: Node, message: String): Result[Unit] = log(WarningMessage(node.getStartMark, message))
+  @inline def error[A](err: ErrorMessage): Result[A] = log(err).flatMap(_ => EitherT.leftT(ExitCode.Error))
+  @inline def error[A](node: Node, message: String): Result[A] = error(ErrorMessage(node.getStartMark, message))
+  @inline def pure[A](value: A): Result[A] = EitherT.pure(value)
+  @inline def left: Result[Unit] = EitherT.leftT(ExitCode.Error)
+  val unit: Result[Unit] = pure(())
 
-  def compile(api: OpenAPI, path: String): (Vector[LogMessage], Either[ExitCode, ProtoFile]) =
-    compileProtoFile(api, path).value.run
-
-  def compileProtoFile(api: OpenAPI, path: String): Result[ProtoFile] =
+  def compile(api: OpenAPI, path: String): Result[ProtoFile] =
     for {
       packageName <- compilePackageName(api, path)
       protoFile = ProtoFile.builder(packageName)
@@ -80,102 +165,136 @@ object ProtoCompiler {
       _ = protoFile += ImportStatement("google/protobuf/wrappers.proto")
       componentsValid <- compileComponents(protoFile, api)
       serviceValid <- compileService(protoFile, api)
-      _ <- require(componentsValid, "has invalid components")
-      _ <- require(serviceValid, "has invalid service")
+      _ <- if (componentsValid && serviceValid) unit else left
     } yield protoFile.build
 
-  def compilePackageName(api: OpenAPI, path: String): Result[FullIdentifier] =
-    util.extension[String](api.getExtensions, "x-proto-package") match {
-      case Some(value) => compileFullIdentifier(value)
-      case None =>
+  def compileExtensionString(ext: Extensions, key: String): Result[Option[Scalar[String]]] =
+    (for {
+      value <- OptionT.fromOption[Result](ext.get(key))
+      scalar <- value match {
+        case s: ScalarNode => OptionT.pure[Result](s)
+        case _             => OptionT.liftF(error[ScalarNode](value, "expected scalar"))
+      }
+    } yield Scalar(scalar, scalar.getValue)).value
+
+  def compileExtensionStringSeq(ext: Extensions, key: String): Result[Vector[Scalar[String]]] =
+    (for {
+      value <- OptionT.fromOption[Result](ext.get(key))
+      sequenceNode <- value match {
+        case s: SequenceNode => OptionT.pure[Result](s)
+        case _               => OptionT.liftF(error[SequenceNode](value, "expected sequence"))
+      }
+      values <- OptionT.liftF(sequenceNode.getValue.asScala.toVector.traverse[Result, Scalar[String]] { node =>
         for {
-          _ <- warning("x-proto-package is not defined")
-          _ <- info("try extract package name from path")
-          raw = util.cleanup(Paths.get(path).getFileName.toString.replaceAll("\\.[a-zA-Z]{3,5}$", ""))
-          id <- compileFullIdentifier(raw)
-        } yield id
+          scalar <- node match {
+            case scalar: ScalarNode => pure(scalar)
+            case _                  => error[ScalarNode](node, "expected scalar")
+          }
+        } yield Scalar(scalar, scalar.getValue)
+      })
+    } yield values).value.map(_.getOrElse(Vector.empty))
+
+  def compilePackageName(api: OpenAPI, path: String): Result[FullIdentifier] =
+    for {
+      opt <- compileExtensionString(api.extensions, "x-proto-package")
+      id <- opt match {
+        case Some(value) => compileFullIdentifier(value.node, value.value)
+        case None =>
+          for {
+            _ <- warning(api.node, "x-proto-package is not defined")
+            raw = util.cleanup(Paths.get(path).getFileName.toString.replaceAll("\\.[a-zA-Z]{3,5}$", ""))
+            id <- compileFullIdentifier(api.node, raw)
+          } yield id
+      }
+    } yield id
+
+  def compileReserved(schema: SchemaNormal): Result[Vector[Int]] =
+    for {
+      seq <- compileExtensionStringSeq(schema.extensions, "x-proto-reserved")
+      reserved <- seq.traverse[Result, Int] { constant =>
+        if (constant.value.matches("^\\d+$")) {
+          pure(constant.value.toInt)
+        } else {
+          error(constant.node, "expected integer")
+        }
+      }
+    } yield reserved
+
+  def extractRef($ref: Scalar[String]): Result[Scalar[String]] =
+    $ref.value match {
+      case util.schemaRef(id) => pure($ref.map(_ => id))
+      case _                  => error($ref.node, "unsupported ref")
     }
 
-  def compileSchemas(api: OpenAPI): Result[Map[String, Schema[_]]] =
-    EitherT.pure(Option(api.getComponents.getSchemas).map(_.asScala.toMap).getOrElse(Map.empty))
-
-  def compileSchemaRef(api: OpenAPI, ref: String): Result[Schema[_]] =
+  def compileSchemaRef(api: OpenAPI, $ref: Scalar[String]): Result[Schema] =
     for {
-      schemas <- compileSchemas(api)
-      _ <- require(schemas.contains(ref), s"component schema $ref does not exists")
-      schema = api.getComponents.getSchemas.get(ref)
-    } yield schema
+      id <- extractRef($ref)
+      _ <- require(api.components.schemas.contains(id), $ref.node, s"component schema $id does not exists")
+    } yield api.components.schemas(id)
 
-  def compileFullIdentifier(value: String): Result[FullIdentifier] =
+  def compileFullIdentifier(node: Node, value: String): Result[FullIdentifier] =
     if (lexical.validate(value, lexical.identifiers.fullIdent)) {
-      EitherT.pure(FullIdentifier(value))
-    } else error("not valid full identifier")
+      pure(FullIdentifier(value))
+    } else error(node, "not valid full identifier")
 
-  def compileTypeName(value: String): Result[Identifier] = {
-    val formatted = util.underscoreToCamelCase(util.cleanup(value)).capitalize
-    compileIdentifier(formatted)
-  }
+  def compileTypeName(value: Scalar[String]): Result[Identifier] =
+    compileIdentifier(value.map(util.cleanup).map(util.underscoreToCamelCase).map(_.capitalize))
 
-  def compileIdentifier(value: String): Result[Identifier] =
-    if (lexical.validate(value, lexical.identifiers.ident)) {
-      EitherT.pure(Identifier(value))
-    } else error("not valid identifier")
+  def compileIdentifier(value: Scalar[String]): Result[Identifier] =
+    if (lexical.validate(value.value, lexical.identifiers.ident)) {
+      EitherT.pure(Identifier(value.value))
+    } else error(value.node, "not valid identifier")
 
   def compileComponents(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
     for {
-      schemas <- compileSchemas(api)
-      _ <- schemas.toVector
+      valid <- api.components.schemas.toVector
         .traverse[Result, Either[ExitCode, Unit]] {
-          case (typeName, schema: ObjectSchema) =>
-            compileComponentObject(protoFile, typeName, api, schema).attempt
-          case (typeName, schema: StringSchema) if schema.getEnum != null =>
+          case (typeName, EnumSchema(schema)) =>
             compileComponentEnum(protoFile, typeName, schema).attempt
-          case (typeName, _) =>
-            warning(s"ignore component: $typeName").attempt
+          case (typeName, ObjectSchema(schema)) =>
+            compileComponentObject(protoFile, typeName, api, schema).attempt
+          case (typeName, schema) =>
+            warning(schema.node, s"ignore component: $typeName").attempt
         }
         .map(_.forall(_.isRight))
-    } yield true
+    } yield valid
 
   def compileComponentObject(
     protoFile: ProtoFileBuilder,
-    typeName: String,
+    typeName: Scalar[String],
     api: OpenAPI,
-    schema: ObjectSchema
+    schema: SchemaNormal
   ): Result[Unit] =
     for {
-      _ <- info(s"message=$typeName schema=${schema.getType}")
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
-      messageBuilder = Message.builder(Identifier(typeName))
-      _ = messageBuilder.reserved(util.reserved(schema))
-      requiredFields = Option(schema.getRequired).map(_.asScala.toSet).getOrElse(Set.empty)
-      valid <- Option(schema.getProperties)
-        .map(_.asScala)
-        .getOrElse(Map.empty)
-        .toVector
+      typeIdentifier <- compileIdentifier(typeName)
+      messageBuilder = Message.builder(typeIdentifier)
+      reserved <- compileReserved(schema)
+      _ = messageBuilder.reserved(reserved)
+      requiredFields = schema.required.map(_.value).toSet
+      valid <- schema.properties.toVector
         .traverse[Result, Either[ExitCode, Unit]] {
           case (fieldName, schema) =>
-            val required = requiredFields.contains(fieldName)
-            compileField(messageBuilder, fieldName, api, schema, schema.getExtensions, required).attempt
+            val required = requiredFields.contains(fieldName.value)
+            compileField(messageBuilder, fieldName, api, schema, schema.extensions, required).attempt
         }
         .map(_.forall(_.isRight))
-      _ <- require(valid, "contains invalid fields")
+      _ <- if (valid) unit else left
       _ = protoFile += messageBuilder.build
     } yield ()
 
-  def compileComponentEnum(protoFile: ProtoFileBuilder, typeName: String, schema: StringSchema): Result[Unit] =
+  def compileComponentEnum(protoFile: ProtoFileBuilder, typeName: Scalar[String], schema: SchemaNormal): Result[Unit] =
     for {
-      _ <- requireNotRef(schema)
       _ <- requireNoFormat(schema)
       enumId <- compileTypeName(typeName)
       enumBuilder = Enum.builder(enumId)
-      _ <- schema.getEnum.asScala.toVector
-        .traverse[Result, Either[ExitCode, Unit]] { value =>
-          val clean = util.cleanup(value)
-          val formatted = clean match {
-            case util.constantRegex()  => clean.toUpperCase()
-            case util.camelCaseRegex() => util.camelCaseToUnderscore(clean).toUpperCase()
-            case _                     => util.camelCaseToUnderscore(clean).toUpperCase()
+      _ <- schema.`enum`
+        .traverse[Result, Either[ExitCode, Unit]] { constant =>
+          val formatted = constant.map(util.cleanup).map {
+            case util.constantRegex(value)  => value.toUpperCase()
+            case util.camelCaseRegex(value) => util.camelCaseToUnderscore(value).toUpperCase()
+            case value                      => util.camelCaseToUnderscore(value).toUpperCase()
           }
           (for {
             id <- compileIdentifier(formatted)
@@ -187,25 +306,26 @@ object ProtoCompiler {
     } yield ()
 
   def compileServiceName(api: OpenAPI): Result[Identifier] =
-    util.extension[String](api.getExtensions, "x-proto-service") match {
-      case Some(value) => compileIdentifier(value)
-      case None =>
-        for {
-          _ <- warning("x-proto-service is not defined")
-          _ <- info("try extract service name from title")
-          id <- compileTypeName(api.getInfo.getTitle + "Service")
-        } yield id
-    }
+    for {
+      opt <- compileExtensionString(api.extensions, "x-proto-service")
+      id <- opt match {
+        case Some(value) => compileIdentifier(value)
+        case None =>
+          for {
+            _ <- warning(api.node, "x-proto-service is not defined")
+            id <- compileTypeName(api.info.title.map(_ + "Service"))
+          } yield id
+      }
+    } yield id
 
   def compileService(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
     for {
-      _ <- info("compile service")
       serviceName <- compileServiceName(api)
       serviceBuilder = Service.builder(serviceName)
-      valid <- api.getPaths.asScala.toVector
+      valid <- api.paths.values.toVector
         .flatMap {
           case (path, item) =>
-            item.readOperationsMap.asScala.map {
+            item.operations.map {
               case (method, op) =>
                 (path, method, op)
             }
@@ -221,95 +341,78 @@ object ProtoCompiler {
   def compileRpc(
     protoFile: ProtoFileBuilder,
     service: ServiceBuilder,
-    method: PathItem.HttpMethod,
-    path: String,
+    method: HttpMethod,
+    path: Scalar[String],
     op: Operation,
     api: OpenAPI
   ): Result[Unit] =
     for {
-      _ <- require(op.getOperationId != null, "require operationId")
-      _ <- info(s"compile rpc ${op.getOperationId}")
-      requestType <- compileTypeName(op.getOperationId.capitalize + "Request")
-      responseType <- compileTypeName(op.getOperationId.capitalize + "Response")
-      operationId <- compileIdentifier(op.getOperationId)
+      _ <- require(op.operationId.isDefined, op.node, "require operationId")
+      operationId = op.operationId.get
+      requestType <- compileTypeName(operationId.map(_.capitalize + "Request"))
+      responseType <- compileTypeName(operationId.map(_.capitalize + "Response"))
+      operationId <- compileIdentifier(operationId)
       http = RpcOption.builder(FullIdentifier("google.api.http"))
-      _ = http += OptionStatement(Identifier(method.toString.toLowerCase), path)
+      _ = http += OptionStatement(Identifier(method.toString.toLowerCase), path.value)
 
       requestBuilder = Message.builder(requestType)
-      validParams <- if (op.getParameters != null) {
-        op.getParameters.asScala.toVector
-          .traverse[Result, Either[ExitCode, Unit]] { p =>
-            (for {
-              _ <- info(s"compile parameter: ${p.getName}")
-              _ <- require(p.getName != null, "parameter name is required")
-              _ <- require(p.getName.nonEmpty, "parameter name is required")
-              _ <- require(p.getSchema != null, "parameter schema is required")
-              _ <- requireNotRef(p.getSchema)
-              _ <- compileField(requestBuilder, p.getName, api, p.getSchema, p.getExtensions, p.getRequired)
-            } yield ()).attempt
-          }
-          .map(_.forall(_.isRight))
-      } else info("no query parameters body").map(_ => true)
-      validRequest <- if (op.getRequestBody != null)
-        for {
-          _ <- require(op.getRequestBody.get$ref() == null, "request body $ref not allowed")
-          _ <- require(op.getRequestBody.getContent != null, "request body content required")
-          _ <- info(s"compile request body")
-          result <- compileContent(
+      validParams <- op.parameters
+        .traverse[Result, Either[ExitCode, Unit]] { p =>
+          (for {
+            _ <- require(p.name.value.nonEmpty, p.node, "parameter name is required")
+            _ <- require(p.schema.isDefined, p.node, "parameter schema is required")
+            schema = p.schema.get
+            _ <- requireNotRef(schema)
+            _ <- compileField(requestBuilder, p.name, api, schema, p.extensions, p.required.exists(_.value))
+          } yield ()).attempt
+        }
+        .map(_.forall(_.isRight))
+      validRequest <- op.requestBody match {
+        case None => pure(true)
+        case Some(requestBody) =>
+          compileContent(
             http,
             requestBuilder,
-            op.getRequestBody.getContent,
-            "request_body",
+            requestBody.content,
+            Scalar(requestBody.node, "request_body"),
             Identifier("body"),
             api
           ).attempt
-        } yield result.isRight
-      else info("no request body").map(_ => true)
+            .map(_.isRight)
+      }
       _ = protoFile += requestBuilder.build
 
       responseBuilder = Message.builder(responseType)
-      _ <- require(op.getResponses != null, "responses is required")
-      responses = op.getResponses
-      response = if (responses.containsKey("default")) {
-        val response = responses.getDefault
+      response = if (op.responses.values.contains("default")) {
+        val response = op.responses.values("default")
         Some(response)
-      } else if (responses.containsKey("200")) {
-        val response = responses.get("200")
+      } else if (op.responses.values.contains("200")) {
+        val response = op.responses.values("200")
         Some(response)
-      } else if (responses.containsKey("201")) {
-        val response = responses.get("201")
+      } else if (op.responses.values.contains("201")) {
+        val response = op.responses.values("201")
         Some(response)
       } else {
         None
       }
       validResponse <- response match {
-        case None => info("no response").map(_ => true)
+        case None => pure(true)
         case Some(response) =>
           for {
-            _ <- info("compile response")
-            _ <- require(response.get$ref() == null, "")
-            _ <- if (response.getContent == null) info("no response body").map(_ => true)
+            _ <- if (response.content.isEmpty) pure(true)
             else
-              for {
-                _ <- info("compile response body")
-                result <- compileContent(
-                  http,
-                  responseBuilder,
-                  response.getContent,
-                  "response_body",
-                  Identifier("response_body"),
-                  api
-                ).attempt
-              } yield result.isRight
+              compileContent(
+                http,
+                responseBuilder,
+                response.content.get,
+                Scalar(response.node, "response_body"),
+                Identifier("response_body"),
+                api
+              ).attempt
           } yield true
       }
-
       _ = protoFile += responseBuilder.build
-
-      _ <- require(validParams, "has invalid request params")
-      _ <- require(validRequest, "has invalid request body")
-      _ <- require(validResponse, "has invalid response")
-
+      _ <- if (validParams && validRequest && validResponse) unit else left
       rpc = RpcStatement.builder(operationId)
       _ = rpc.withRequestType(requestType)
       _ = rpc.withResponseType(responseType)
@@ -321,210 +424,207 @@ object ProtoCompiler {
     options: RpcOptionBuilder,
     builder: MessageBuilder,
     content: Content,
-    fieldName: String,
+    fieldName: Scalar[String],
     context: Identifier,
     api: OpenAPI
   ): Result[Unit] =
     for {
-      _ <- info("compile content")
-      _ <- require(!content.isEmpty, s"$context content should not be empty")
-      _ <- require(content.size() == 1, s"$context content should contain only one media type")
-      (mediaType, media) = content.asScala.head
-      _ <- require(media != null, "media type is required")
-      schema = media.getSchema
-      _ <- require(schema != null, "media type schema is required")
-      fieldId <- compileFieldIdentifier(media.getExtensions, fieldName)
-      _ = mediaType match {
+      _ <- require(content.media.nonEmpty, content.node, s"$context content should not be empty")
+      _ <- require(content.media.size == 1, content.node, s"$context content should contain only one media type")
+      (mediaType, media) = content.media.entries.head
+      _ <- require(media.schema.isDefined, media.node, "media type schema is required")
+      schema = media.schema.get
+      fieldId <- compileFieldIdentifier(media.extensions, fieldName)
+      _ = mediaType.value match {
         case "application/json" =>
-          compileField(builder, fieldId, api, schema, media.getExtensions, required = true)
+          compileField(builder, fieldId, api, schema, media.extensions, required = true)
         case "text/plain" =>
           for {
-            _ <- require(schema.getType == "string", s"$fieldName: schema type should be string")
-            fieldNum <- compileFieldNum(builder, media.getExtensions)
+            _ <- schema match {
+              case StringSchema(_) => unit
+              case _               => error(schema.node, s"$fieldName: schema type should be string")
+            }
+            fieldNum <- compileFieldNum(builder, media.extensions)
             _ = builder += NormalField(Identifier("string"), fieldId, fieldNum, Vector.empty)
           } yield ()
         case "application/octet-stream" =>
           for {
-            _ <- require(schema.getType == "string", s"$fieldName: schema type should be string")
-            _ <- require(schema.getFormat == "binary", s"$fieldName: string format should be binary")
-            fieldNum <- compileFieldNum(builder, media.getExtensions)
+            _ <- schema match {
+              case BinaryStringSchema(_) => unit
+              case _                     => error(schema.node, s"$fieldName: schema type should be binary string")
+            }
+            fieldNum <- compileFieldNum(builder, media.extensions)
             _ = builder += NormalField(Identifier("bytes"), fieldId, fieldNum, Vector.empty)
           } yield ()
+        case _ =>
+          error(mediaType.node, "unexpected media type")
       }
       _ = options += OptionStatement(context, fieldId.value)
     } yield ()
 
   def compileField(
     builder: MessageBuilder,
-    fiendName: String,
+    fiendName: Scalar[String],
     api: OpenAPI,
-    schema: Schema[_],
+    schema: Schema,
     extensions: Extensions,
     required: Boolean
   ): Result[Unit] =
     for {
-      _ <- info(s"compile field: $fiendName")
       fieldIdentifier <- compileFieldIdentifier(extensions, fiendName)
       _ <- compileField(builder, fieldIdentifier, api, schema, extensions, required)
-      _ <- info(s"compile field: $fiendName done")
     } yield ()
 
   def compileField(
     builder: MessageBuilder,
     fieldId: Identifier,
     api: OpenAPI,
-    schema: Schema[_],
+    schema: Schema,
     extensions: Extensions,
     required: Boolean
   ): Result[Unit] =
     schema match {
-      case integer: IntegerSchema =>
+      case IntegerSchema(integer) =>
         for {
           fieldType <- compileInteger(integer, required)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
-      case number: NumberSchema =>
+      case NumberSchema(number) =>
         for {
           fieldType <- compileNumber(number, required)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
-      case string: StringSchema =>
+      case StringSchema(string) =>
         for {
           fieldType <- compileString(string, required)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
-      case date: DateSchema =>
+      case DateSchema(date) =>
         for {
           fieldType <- compileDate(date, required)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
-      case date: DateTimeSchema =>
+      case DateTimeSchema(date) =>
         for {
           fieldType <- compileDateTime(date, required)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
-      case boolean: BooleanSchema =>
+      case BooleanSchema(boolean) =>
         for {
           fieldType <- compileBoolean(boolean, required)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
-      case _ if schema.get$ref() != null =>
+      case reference: Reference =>
         for {
-          fieldType <- compileComponentRef(api, schema)
+          fieldType <- compileComponentRef(api, reference)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
-      case array: ArraySchema =>
+      case ArraySchema(array) =>
         for {
           fieldType <- compileArrayType(api, array)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += RepeatedField(fieldType, fieldId, fieldNum)
         } yield ()
-      case composed: ComposedSchema =>
+      case OneOfSchema(composed) =>
         for {
           _ <- requireNotRef(composed)
           _ <- requireNotEnum(composed)
-          _ <- require(composed.getAllOf == null, "allOf is not supported")
-          _ <- require(composed.getAnyOf == null, "anyOf is not supported")
-          _ <- require(composed.getOneOf != null, "oneOf is required")
           oneOf = OneOf.builder(fieldId)
-          valid <- composed.getOneOf.asScala.toVector
+          valid <- composed.oneOf
             .traverse[Result, Either[ExitCode, Unit]] { schema =>
               (for {
                 fieldType <- schema match {
-                  case integer: IntegerSchema       => compileInteger(integer, required = true)
-                  case number: NumberSchema         => compileNumber(number, required = true)
-                  case string: StringSchema         => compileString(string, required = true)
-                  case date: DateSchema             => compileDate(date, required = true)
-                  case date: DateTimeSchema         => compileDateTime(date, required = true)
-                  case boolean: BooleanSchema       => compileBoolean(boolean, required = true)
-                  case ref if ref.get$ref() != null => compileComponentRef(api, ref)
-                  case schema                       => error(s"schema is not supported at oneOf level: $schema")
+                  case IntegerSchema(integer) => compileInteger(integer, required = true)
+                  case NumberSchema(number)   => compileNumber(number, required = true)
+                  case StringSchema(string)   => compileString(string, required = true)
+                  case DateSchema(date)       => compileDate(date, required = true)
+                  case DateTimeSchema(date)   => compileDateTime(date, required = true)
+                  case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
+                  case ref: Reference         => compileComponentRef(api, ref)
+                  case schema                 => error(schema.node, "schema is not supported at oneOf level")
                 }
-                fieldName <- compileFieldIdentifierFromType(fieldType)
-                fieldNum <- compileFieldNum(builder, Collections.emptyMap())
+                fieldName <- fieldType match {
+                  case Identifier(value) =>
+                    compileIdentifier(Scalar(schema.node, util.camelCaseToUnderscore(value)))
+                  case FullIdentifier(value) =>
+                    val typeName = util.extractIdentifier(value)
+                    val id = util.camelCaseToUnderscore(typeName)
+                    compileIdentifier(Scalar(schema.node, id))
+                }
+                fieldNum <- compileFieldNum(builder, ScalarMap.empty)
                 _ = oneOf += OneOfField(fieldType, fieldName, fieldNum, Vector.empty)
               } yield ()).attempt
             }
             .map(_.forall(_.isRight))
           _ = builder += oneOf.build
-          _ <- require(valid, "oneOf contains invalid schema")
+          _ <- if (valid) unit else left
         } yield ()
-      case _ => error(s"schema is not supported: $schema")
+      case _ => error(schema.node, s"schema is not supported: $schema")
     }
 
   def compileFieldNum(builder: MessageBuilder, extensions: Extensions): Result[Int] =
     for {
-      _ <- info("compile field num")
-      fieldNum = util.extension[Int](extensions, "x-proto-field-id").getOrElse(builder.nextFieldNum)
+      opt <- compileExtensionString(extensions, "x-proto-field-id")
+      fieldNum <- opt match {
+        case Some(constant) =>
+          for {
+            _ <- require(constant.value.matches("^\\d+$"), constant.node, "expected integer")
+          } yield constant.value.toInt
+        case None =>
+          pure(builder.nextFieldNum)
+      }
     } yield fieldNum
 
-  def compileFieldIdentifier(extensions: Extensions, fieldName: String): Result[Identifier] =
-    util.extension[String](extensions, "x-proto-field") match {
-      case Some(value) => compileIdentifier(util.camelCaseToUnderscore(util.cleanup(value)))
-      case None =>
-        for {
-          _ <- info("x-proto-field is not defined")
-          id <- compileIdentifier(util.camelCaseToUnderscore(util.cleanup(fieldName)))
-        } yield id
-    }
-
-  def compileFieldIdentifierFromType(id: TypeIdentifier): Result[Identifier] =
-    id match {
-      case Identifier(value) =>
-        for {
-          _ <- info(s"compile field name from type $value")
-          fieldId <- compileIdentifier(util.camelCaseToUnderscore(value))
-        } yield fieldId
-      case FullIdentifier(value) =>
-        for {
-          _ <- info(s"compile field name from type $value")
-          typeName = util.extractIdentifier(value)
-          fieldId <- compileIdentifier(util.camelCaseToUnderscore(typeName))
-        } yield fieldId
-    }
-
-  def compileInteger(schema: IntegerSchema, required: Boolean): Result[TypeIdentifier] =
+  def compileFieldIdentifier(extensions: Extensions, fieldName: Scalar[String]): Result[Identifier] =
     for {
-      _ <- info("compile integer")
+      opt <- compileExtensionString(extensions, "x-proto-field")
+      constant = opt match {
+        case Some(constant) => constant
+        case None           => fieldName
+      }
+      clean = constant.map(util.cleanup).map(util.camelCaseToUnderscore)
+      id <- compileIdentifier(clean)
+    } yield id
+
+  def compileInteger(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
+    for {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
-      format <- (required, Option(schema.getFormat)) match {
-        case (true, Some("int32"))  => compileIdentifier("int32")
-        case (true, Some("int64"))  => compileIdentifier("int64")
-        case (true, None)           => compileIdentifier("int64")
-        case (false, Some("int32")) => compileFullIdentifier("google.protobuf.Int32Value")
-        case (false, Some("int64")) => compileFullIdentifier("google.protobuf.Int64Value")
-        case (false, None)          => compileFullIdentifier("google.protobuf.Int64Value")
-        case (_, Some(format))      => error(s"unexpected format: $format")
+      format <- (required, schema.format) match {
+        case (true, Some(FormatType.INTEGER32_FORMAT))  => pure(Identifier("int32"))
+        case (true, Some(FormatType.INTEGER64_FORMAT))  => pure(Identifier("int64"))
+        case (true, None)                               => pure(Identifier("int64"))
+        case (false, Some(FormatType.INTEGER32_FORMAT)) => pure(FullIdentifier("google.protobuf.Int32Value"))
+        case (false, Some(FormatType.INTEGER64_FORMAT)) => pure(FullIdentifier("google.protobuf.Int64Value"))
+        case (false, None)                              => pure(FullIdentifier("google.protobuf.Int64Value"))
+        case (_, Some(format))                          => error(schema.node, s"unexpected format: $format")
       }
     } yield format
 
-  def compileNumber(schema: NumberSchema, required: Boolean): Result[TypeIdentifier] =
+  def compileNumber(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
-      _ <- info("compile number")
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
-      format <- (required, Option(schema.getFormat)) match {
-        case (true, Some("float"))   => compileIdentifier("float")
-        case (true, Some("double"))  => compileIdentifier("double")
-        case (true, None)            => compileIdentifier("double")
-        case (false, Some("float"))  => compileFullIdentifier("google.protobuf.FloatValue")
-        case (false, Some("double")) => compileFullIdentifier("google.protobuf.DoubleValue")
-        case (false, None)           => compileFullIdentifier("google.protobuf.DoubleValue")
-        case (_, Some(format))       => error(s"unexpected format: $format")
+      format <- (required, schema.format) match {
+        case (true, Some(FormatType.FLOAT_FORMAT))   => pure(Identifier("float"))
+        case (true, Some(FormatType.DOUBLE_FORMAT))  => pure(Identifier("double"))
+        case (true, None)                            => pure(Identifier("double"))
+        case (false, Some(FormatType.FLOAT_FORMAT))  => pure(FullIdentifier("google.protobuf.FloatValue"))
+        case (false, Some(FormatType.DOUBLE_FORMAT)) => pure(FullIdentifier("google.protobuf.DoubleValue"))
+        case (false, None)                           => pure(FullIdentifier("google.protobuf.DoubleValue"))
+        case (_, Some(format))                       => error(schema.node, s"unexpected format: $format")
       }
     } yield format
 
-  def compileString(schema: StringSchema, required: Boolean): Result[TypeIdentifier] =
+  def compileString(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
-      _ <- info("compile string")
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
       _ <- requireNoFormat(schema)
@@ -532,89 +632,87 @@ object ProtoCompiler {
       if (required) Identifier("string")
       else FullIdentifier("google.protobuf.StringValue")
 
-  def compileDate(schema: DateSchema, required: Boolean): Result[TypeIdentifier] =
+  def compileDate(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
-      _ <- info("compile date")
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
     } yield
       if (required) Identifier("string")
       else FullIdentifier("google.protobuf.StringValue")
 
-  def compileDateTime(schema: DateTimeSchema, required: Boolean): Result[TypeIdentifier] =
+  def compileDateTime(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
-      _ <- info("compile datetime")
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
     } yield
       if (required) Identifier("string")
       else FullIdentifier("google.protobuf.StringValue")
 
-  def compileBoolean(schema: BooleanSchema, required: Boolean): Result[TypeIdentifier] =
+  def compileBoolean(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
-      _ <- info("compile boolean")
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
     } yield
       if (required) Identifier("bool")
       else FullIdentifier("google.protobuf.BoolValue")
 
-  def compileComponentRef(api: OpenAPI, schema: Schema[_]): Result[TypeIdentifier] =
+  def compileComponentRef(api: OpenAPI, schema: Reference): Result[TypeIdentifier] =
     for {
-      _ <- info(s"compile component ref: ${schema.get$ref()}")
-      _ <- requireNotEnum(schema)
-      ref <- schema.get$ref() match {
-        case util.schemaRef(ref) => EitherT.pure[Logging, ExitCode](ref)
-        case _                   => error(s"unsupported ref: ${schema.get$ref()}")
-      }
-      refSchema <- compileSchemaRef(api, ref)
+      refSchema <- compileSchemaRef(api, schema.$ref)
       typeName: TypeIdentifier <- refSchema match {
-        case integer: IntegerSchema => compileInteger(integer, required = true)
-        case number: NumberSchema   => compileNumber(number, required = true)
-        case string: StringSchema =>
-          if (string.getEnum == null)
-            compileString(string, required = true)
-          else
-            compileTypeName(ref)
-        case date: DateSchema       => compileDate(date, required = true)
-        case date: DateTimeSchema   => compileDateTime(date, required = true)
-        case boolean: BooleanSchema => compileBoolean(boolean, required = true)
-        case _: ArraySchema         => error(s"array schema is not supported: ${schema.get$ref()}")
-        case _: ObjectSchema        => compileTypeName(ref)
-        case _                      => error(s"schema is not supported: ${schema.get$ref()}")
+        case IntegerSchema(integer) => compileInteger(integer, required = true)
+        case NumberSchema(number)   => compileNumber(number, required = true)
+        case StringSchema(string)   => compileString(string, required = true)
+        case EnumSchema(_) =>
+          for {
+            id <- extractRef(schema.$ref)
+            typeName <- compileTypeName(id)
+          } yield typeName
+        case DateSchema(date)       => compileDate(date, required = true)
+        case DateTimeSchema(date)   => compileDateTime(date, required = true)
+        case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
+        case ArraySchema(_)         => error[TypeIdentifier](refSchema.node, "array schema is not supported")
+        case ObjectSchema(_) =>
+          for {
+            id <- extractRef(schema.$ref)
+            typeName <- compileTypeName(id)
+          } yield typeName
+        case _ => error[TypeIdentifier](refSchema.node, "schema is not supported")
       }
     } yield typeName
 
-  def compileArrayType(api: OpenAPI, schema: ArraySchema): Result[TypeIdentifier] =
+  def compileArrayType(api: OpenAPI, schema: SchemaNormal): Result[TypeIdentifier] =
     for {
-      _ <- info("compile array type")
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
-      _ <- require(schema.getItems != null, "array items schema is required")
-      _ <- requireNotEnum(schema.getItems)
-      items = schema.getItems
+      _ <- require(schema.items.isDefined, schema.node, "array items schema is required")
+      items = schema.items.get
       format <- items match {
-        case integer: IntegerSchema       => compileInteger(integer, required = true)
-        case number: NumberSchema         => compileNumber(number, required = true)
-        case string: StringSchema         => compileString(string, required = true)
-        case date: DateSchema             => compileDate(date, required = true)
-        case date: DateTimeSchema         => compileDateTime(date, required = true)
-        case boolean: BooleanSchema       => compileBoolean(boolean, required = true)
-        case _: ArraySchema               => error("nested array schema is not supported")
-        case _ if items.get$ref() != null => compileComponentRef(api, schema.getItems)
-        case _                            => error(s"items schema is not supported: $items")
+        case ref: Reference         => compileComponentRef(api, ref)
+        case IntegerSchema(integer) => compileInteger(integer, required = true)
+        case NumberSchema(number)   => compileNumber(number, required = true)
+        case StringSchema(string)   => compileString(string, required = true)
+        case DateSchema(date)       => compileDate(date, required = true)
+        case DateTimeSchema(date)   => compileDateTime(date, required = true)
+        case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
+        case ArraySchema(_)         => error(items.node, "nested array schema is not supported")
+        case _                      => error(items.node, s"items schema is not supported: $items")
       }
     } yield format
 
-  def requireNotRef(schema: Schema[_]): Result[Unit] =
-    require(schema.get$ref() == null, "$ref is not allowed")
+  def requireNotRef(schema: Schema): Result[Unit] =
+    require(!schema.isInstanceOf[Reference], schema.node, "$ref is not allowed")
 
-  def requireNotEnum(schema: Schema[_]): Result[Unit] =
-    require(schema.getEnum == null, "enum is not allowed")
+  def requireNotEnum(schema: SchemaNormal): Result[Unit] =
+    require(schema.enum.isEmpty, schema.node, "enum is not allowed")
 
-  def requireNoFormat(schema: Schema[_]): Result[Unit] =
-    require(schema.getFormat == null, "format is not allowed")
+  def requireNoFormat(schema: SchemaNormal): Result[Unit] =
+    require(schema.format.isEmpty, schema.node, "format is not allowed")
 
-  def require(test: Boolean, message: String): Result[Unit] =
-    if (test) EitherT.pure(()) else error(message)
+  def require(test: Boolean, node: Node, message: String): Result[Unit] =
+    if (test) {
+      EitherT.pure(())
+    } else {
+      error(node, message)
+    }
 }

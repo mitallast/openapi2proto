@@ -43,6 +43,13 @@
 .console .red {
   color: red;
 }
+.console a {
+  text-decoration: none;
+  color: inherit;
+}
+.console a:hover {
+  text-decoration: underline;
+}
 
 textarea.console {
   display: block;
@@ -857,7 +864,6 @@ components:
       const result = document.getElementById("result");
       const form = document.forms["compileForm"];
       form.addEventListener("submit", async function (e) {
-        console.log(e, editor.getValue());
         e.preventDefault();
         const source = editor.getValue().trimStart();
         const action = form.action;
@@ -871,21 +877,42 @@ components:
         });
         const json = await response.json();
         json.log.map(function (record) {
-          if("Info" in record) {
-            logs.append(green("[INFO   ] "));
-            logs.append(white(record["Info"].message));
-            logs.append("\r\n");
+          if("INFO" === record.level) {
+            logs.append(green("[INFO   ]"));
           }
-          if("Warning" in record) {
-            logs.append(yellow("[WARNING] "));
-            logs.append(white(record["Warning"].message));
-            logs.append("\r\n");
+          else if("WARNING" === record.level) {
+            logs.append(yellow("[WARNING]"));
           }
-          if("Error" in record) {
-            logs.append(red("[ERROR  ] "));
-            logs.append(white(record["Error"].message));
-            logs.append("\r\n");
+          else if("ERROR" === record.level) {
+            logs.append(red("[ERROR  ]"));
           }
+          else {
+            logs.append(red("[" + record.level.padEnd(8) + "]"));
+          }
+
+          const link = document.createElement("a");
+          link.setAttribute("href", "#editor:"+record.line+":"+record.column);
+          link.append(record.file + ":" + record.line);
+          logs.append(link);
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            console.log("set position", record);
+            editor.revealLineInCenter(record.line);
+            editor.setPosition({
+              lineNumber: record.line,
+              column: record.column,
+            });
+            editor.focus();
+          });
+
+          const line = white();
+          line.append("[");
+          line.append(link);
+          line.append("] ");
+          logs.append(line);
+
+          logs.append(white(record.message));
+          logs.append("\r\n");
         }).join("\n");
         highlight(result, json.source);
       });
@@ -924,7 +951,6 @@ components:
     .forEach(function (line) {
       line.split(/(\s|"[^"]+"|[{}()=;,])/g) // split to tokens
         .forEach(function (token) {
-          console.log("token:", token);
           if(highlightWords.has(token)) {
             root.append(orange(token));
           } else if (token.match(/^\d+$/)) {
@@ -942,7 +968,7 @@ components:
   }
   function colored(color, text) {
     const span = document.createElement("span");
-    span.append(text);
+    if(text) span.append(text);
     span.classList.add(color);
     return span;
   }

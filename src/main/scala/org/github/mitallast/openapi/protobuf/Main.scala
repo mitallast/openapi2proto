@@ -1,6 +1,6 @@
 package org.github.mitallast.openapi.protobuf
 
-import java.io.File
+import java.io.{File, FileReader, StringReader}
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import cats.effect._
@@ -8,9 +8,11 @@ import cats.implicits._
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
-import io.swagger.v3.parser.OpenAPIV3Parser
-import org.github.mitallast.openapi.protobuf.compiler.{Error, Info, LogMessage, ProtoCompiler, Warning}
+import org.github.mitallast.openapi.protobuf.logging._
+import org.github.mitallast.openapi.protobuf.logging.implicits._
+import org.github.mitallast.openapi.protobuf.compiler.ProtoCompiler
 import org.github.mitallast.openapi.protobuf.writer.Writer
+import org.github.mitallast.openapi.protobuf.parser.OpenAPIParser
 import org.http4s._
 import org.http4s.circe._
 import org.http4s.dsl.io._
@@ -93,18 +95,25 @@ object Main extends IOApp {
 
   private def compile(filepath: Path): IO[ExitCode] = IO {
     val logger = getLogger("compiler")
-    val api = new OpenAPIV3Parser().read(filepath.toString)
-    val (logging, result) = ProtoCompiler.compile(api, filepath.toString)
+
+    val filename = filepath.getFileName.toString
+    val reader = new FileReader(filepath.toFile)
+
+    val (logging, result) = (for {
+      api <- OpenAPIParser.parse(reader, filename)
+      protoFile <- ProtoCompiler.compile(api, filepath.toString)
+    } yield protoFile).value.run
+
     logging.foreach {
-      case Info(message)    => logger.info(message)
-      case Warning(message) => logger.warn(message)
-      case Error(message)   => logger.error(message)
+      case info: InfoMessage       => logger.info(info.messageWithLine)
+      case warning: WarningMessage => logger.warn(warning.messageWithLine)
+      case error: ErrorMessage     => logger.error(error.messageWithLine)
     }
     result match {
       case Left(exitCode) =>
         val errors = logging.count {
-          case _: Error => true
-          case _        => false
+          case _: ErrorMessage => true
+          case _               => false
         }
         logger.info(s"errors: $errors")
         exitCode
@@ -128,8 +137,12 @@ object Main extends IOApp {
         request.decode[String] { yaml =>
           for {
             source <- blocker.delay[IO, CompileResponse] {
-              val api = new OpenAPIV3Parser().readContents(yaml).getOpenAPI
-              ProtoCompiler.compile(api, "source.proto") match {
+              val filename = "openapi.yaml"
+              val reader = new StringReader(yaml)
+              (for {
+                api <- OpenAPIParser.parse(reader, filename)
+                protoFile <- ProtoCompiler.compile(api, filename)
+              } yield protoFile).value.run match {
                 case (logs, Left(_)) =>
                   CompileResponse(logs, None)
                 case (logs, Right(protoFile)) =>

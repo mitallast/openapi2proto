@@ -15,20 +15,6 @@ enum OrderStatus {
    DELIVERED = 2;
 }
 
-message Pet {
-   google.protobuf.Int64Value id = 1;
-   Category category = 2;
-   string name = 3;
-   repeated string photo_urls = 4;
-   repeated Tag tags = 5;
-   PetStatus status = 6;
-}
-
-message Category {
-   google.protobuf.Int64Value id = 1;
-   google.protobuf.StringValue name = 2;
-}
-
 message TestMessage {
    oneof test2 {
       PetStatus pet_status = 1;
@@ -38,7 +24,18 @@ message TestMessage {
    }
 }
 
-message Tag {
+message Order {
+   reserved 1, 2, 5;
+
+   int64 id = 4;
+   google.protobuf.Int64Value pet_id = 3;
+   google.protobuf.Int32Value quantity = 6;
+   google.protobuf.StringValue ship_date = 7;
+   OrderStatus status = 8;
+   google.protobuf.BoolValue complete = 9;
+}
+
+message Category {
    google.protobuf.Int64Value id = 1;
    google.protobuf.StringValue name = 2;
 }
@@ -54,15 +51,18 @@ message User {
    google.protobuf.Int32Value user_status = 8;
 }
 
-message Order {
-   reserved 1, 2, 5;
+message Tag {
+   google.protobuf.Int64Value id = 1;
+   google.protobuf.StringValue name = 2;
+}
 
-   int64 id = 3;
-   google.protobuf.Int64Value pet_id = 4;
-   google.protobuf.Int32Value quantity = 6;
-   google.protobuf.StringValue ship_date = 7;
-   OrderStatus status = 8;
-   google.protobuf.BoolValue complete = 9;
+message Pet {
+   google.protobuf.Int64Value id = 1;
+   Category category = 2;
+   string name = 3;
+   repeated string photo_urls = 4;
+   repeated Tag tags = 5;
+   PetStatus status = 6;
 }
 
 message ApiResponse {

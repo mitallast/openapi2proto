@@ -21,6 +21,8 @@ object Dependencies {
 
     val scopt = "com.github.scopt" %% "scopt" % "4.0.0-RC2"
 
+    val kittens = "org.typelevel" %% "kittens" % "2.0.0"
+
     val http4sVersion = "0.21.0-M6"
     val http4sDsl = "org.http4s" %% "http4s-dsl" % http4sVersion
     val http4sServer = "org.http4s" %% "http4s-blaze-server" % http4sVersion
@@ -28,10 +30,7 @@ object Dependencies {
 
     val circeGeneric = "io.circe" %% "circe-generic" % "0.12.3"
 
-    val swaggerParser = "io.swagger.parser.v3" % "swagger-parser" % "2.0.16" excludeAll (
-      ExclusionRule(organization = "io.swagger.parser.v3", name = "swagger-parser-v2-converter"),
-      ExclusionRule(organization = "org.slf4j"),
-    )
+    val snakeyaml = "org.yaml" % "snakeyaml" % "1.25"
   }
 
   object Test {
@@ -47,11 +46,12 @@ object Dependencies {
     slf4jSimple,
     log4s,
     scopt,
+    kittens,
     http4sDsl,
     http4sServer,
     http4sCirce,
     circeGeneric,
-    swaggerParser,
+    snakeyaml,
     scalacheck,
     scalatest
   )
