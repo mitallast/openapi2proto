@@ -892,7 +892,7 @@ components:
 
           const link = document.createElement("a");
           link.setAttribute("href", "#editor:"+record.line+":"+record.column);
-          link.append(record.file + ":" + record.line);
+          link.append(record.file + ":" + record.line + ":" + record.column);
           logs.append(link);
           link.addEventListener("click", function (e) {
             e.preventDefault();
@@ -912,6 +912,8 @@ components:
           logs.append(line);
 
           logs.append(white(record.message));
+          logs.append("\r\n");
+          logs.append(white(record.snippet));
           logs.append("\r\n");
         }).join("\n");
         highlight(result, json.source);

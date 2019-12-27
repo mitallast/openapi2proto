@@ -14,10 +14,11 @@ object implicits {
     val mark = log.mark
     Json.obj(
       ("file", Json.fromString(mark.getName)),
-      ("line", Json.fromInt(mark.getLine)),
-      ("column", Json.fromInt(mark.getColumn)),
+      ("line", Json.fromInt(mark.getLine + 1)),
+      ("column", Json.fromInt(mark.getColumn + 1)),
       ("level", Json.fromString(level)),
-      ("message", Json.fromString(log.message))
+      ("message", Json.fromString(log.message)),
+      ("snippet", Json.fromString(log.mark.get_snippet()))
     )
   }
 }
