@@ -264,7 +264,7 @@ final case class Example(
   description: Option[Scalar[String]],
   value: Option[Node],
   externalValue: Option[Scalar[String]],
-  $ref: Option[Scalar[String]],
+  $ref: Option[SchemaReference],
   extensions: ScalarMap[String, Node]
 )
 
@@ -318,7 +318,14 @@ sealed trait Schema {
   def node: MappingNode
   def extensions: ScalarMap[String, Node]
 }
-final case class Reference(node: MappingNode, $ref: Scalar[String], extensions: ScalarMap[String, Node]) extends Schema
+
+sealed trait SchemaReference {
+  def id: Scalar[String]
+}
+final case class ComponentsReference(id: Scalar[String]) extends SchemaReference
+final case class ExternalReference(file: Scalar[String], id: Scalar[String]) extends SchemaReference
+
+final case class Reference(node: MappingNode, $ref: SchemaReference, extensions: ScalarMap[String, Node]) extends Schema
 final case class SchemaNormal(
   node: MappingNode,
   `type`: Option[SchemaType],

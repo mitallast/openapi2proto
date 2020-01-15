@@ -13,7 +13,6 @@ import org.yaml.snakeyaml.reader.StreamReader
 import org.yaml.snakeyaml.resolver.Resolver
 import org.github.mitallast.openapi.protobuf.logging._
 
-import scala.io.Source
 import scala.jdk.CollectionConverters._
 
 object NamedStreamReader {
@@ -551,7 +550,8 @@ object OpenAPIParser {
       description <- exampleNode.optionalStringConstant("description")
       value <- exampleNode.optionalField("value")
       externalValue <- exampleNode.optionalStringConstant("externalValue")
-      $ref <- exampleNode.optionalStringConstant("$ref")
+      ref <- exampleNode.optionalStringConstant("$ref")
+      $ref <- parseOptionalRef(ref)
     } yield Example(exampleNode.node, summary, description, value, externalValue, $ref, exampleNode.extensions)
 
   def parseParameters(root: ObjectNode): Result[Vector[Parameter]] =
@@ -656,8 +656,21 @@ object OpenAPIParser {
   def parseSchemaRef(schemaNode: ObjectNode): Result[Schema] =
     for {
       _ <- schemaNode.allowedFields("$ref")
-      $ref <- schemaNode.requireStringConstant("$ref")
+      ref <- schemaNode.requireStringConstant("$ref")
+      $ref <- parseRef(ref)
     } yield Reference(schemaNode.node, $ref, schemaNode.extensions)
+
+  def parseOptionalRef(opt: Option[Scalar[String]]): Result[Option[SchemaReference]] =
+    (for {
+      scalar <- OptionT.fromOption[Result](opt)
+      $ref <- OptionT.liftF(parseRef(scalar))
+    } yield $ref).value
+
+  def parseRef($ref: Scalar[String]): Result[SchemaReference] =
+    $ref.value match {
+      case util.schemaRef(id) => pure(ComponentsReference($ref.map(_ => id)))
+      case _                  => error($ref.node, "unsupported ref")
+    }
 
   def parseSchemaNormal(schemaNode: ObjectNode): Result[Schema] =
     for {

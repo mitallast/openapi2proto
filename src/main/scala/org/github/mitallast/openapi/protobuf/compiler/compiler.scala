@@ -220,17 +220,14 @@ object ProtoCompiler {
       }
     } yield reserved
 
-  def extractRef($ref: Scalar[String]): Result[Scalar[String]] =
-    $ref.value match {
-      case util.schemaRef(id) => pure($ref.map(_ => id))
-      case _                  => error($ref.node, "unsupported ref")
+  def compileSchemaRef(api: OpenAPI, $ref: SchemaReference): Result[Schema] =
+    $ref match {
+      case ComponentsReference(id) =>
+        for {
+          _ <- require(api.components.schemas.contains(id), id.node, s"component schema $id does not exists")
+        } yield api.components.schemas(id)
+      case _ => error($ref.id.node, "unsupported ref")
     }
-
-  def compileSchemaRef(api: OpenAPI, $ref: Scalar[String]): Result[Schema] =
-    for {
-      id <- extractRef($ref)
-      _ <- require(api.components.schemas.contains(id), $ref.node, s"component schema $id does not exists")
-    } yield api.components.schemas(id)
 
   def compileFullIdentifier(node: Node, value: String): Result[FullIdentifier] =
     if (lexical.validate(value, lexical.identifiers.fullIdent)) {
@@ -663,21 +660,13 @@ object ProtoCompiler {
         case IntegerSchema(integer) => compileInteger(integer, required = true)
         case NumberSchema(number)   => compileNumber(number, required = true)
         case StringSchema(string)   => compileString(string, required = true)
-        case EnumSchema(_) =>
-          for {
-            id <- extractRef(schema.$ref)
-            typeName <- compileTypeName(id)
-          } yield typeName
+        case EnumSchema(_)          => compileTypeName(schema.$ref.id)
         case DateSchema(date)       => compileDate(date, required = true)
         case DateTimeSchema(date)   => compileDateTime(date, required = true)
         case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
         case ArraySchema(_)         => error[TypeIdentifier](refSchema.node, "array schema is not supported")
-        case ObjectSchema(_) =>
-          for {
-            id <- extractRef(schema.$ref)
-            typeName <- compileTypeName(id)
-          } yield typeName
-        case _ => error[TypeIdentifier](refSchema.node, "schema is not supported")
+        case ObjectSchema(_)        => compileTypeName(schema.$ref.id)
+        case _                      => error[TypeIdentifier](refSchema.node, "schema is not supported")
       }
     } yield typeName
 
