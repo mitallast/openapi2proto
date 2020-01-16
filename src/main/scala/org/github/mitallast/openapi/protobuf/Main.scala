@@ -37,6 +37,8 @@ final case class Config(
   host: String = "localhost"
 )
 
+final case class CompileRequest(source: String, external: Map[String, String])
+
 final case class CompileResponse(log: Vector[LogMessage], source: Option[String])
 
 object Main extends IOApp {
@@ -44,6 +46,7 @@ object Main extends IOApp {
 
   private val blocker = Blocker.liftExecutionContext(ExecutionContext.global)
 
+  private implicit val userDecoder: EntityDecoder[IO, CompileRequest] = jsonOf[IO, CompileRequest]
   private implicit val pathRead: Read[Path] = Read.reads { Paths.get(_) }
 
   private val builder = OParser.builder[Config]
@@ -136,14 +139,13 @@ object Main extends IOApp {
     val logger = getLogger("server")
     val api = HttpRoutes.of[IO] {
       case request @ POST -> Root / "compile" =>
-        request.decode[String] { yaml =>
+        request.decode[CompileRequest] { compile =>
           val filename = "openapi.yaml"
           for {
-            reader <- blocker.delay[IO, StringReader](new StringReader(yaml))
-            resolver = OpenAPIResolver.apply(Map.empty)
             result <- (for {
-              api <- OpenAPIParser.parse(reader, filename)
-              protoFile <- ProtoCompiler.compile(api, filename, resolver)
+              api <- OpenAPIParser.parse(compile.source, filename)
+              external <- OpenAPIParser.parse(compile.external)
+              protoFile <- ProtoCompiler.compile(api, filename, OpenAPIResolver(external))
             } yield protoFile).value.run
             source <- blocker.delay[IO, CompileResponse] {
               result match {

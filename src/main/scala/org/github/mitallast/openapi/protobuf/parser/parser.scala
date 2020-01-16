@@ -1,6 +1,6 @@
 package org.github.mitallast.openapi.protobuf.parser
 
-import java.io.{FileReader, Reader}
+import java.io.{FileReader, Reader, StringReader}
 
 import cats.data._
 import cats.effect.{ExitCode, IO}
@@ -165,6 +165,18 @@ object OpenAPIParser {
 
     def extensions: ScalarMap[String, Node] = fields.filter(_._1.value.startsWith("x-"))
   }
+
+  def parse(sources: Map[String, String]): Result[Map[String, OpenAPI]] =
+    sources.toVector
+      .traverse[Result, (String, OpenAPI)] {
+        case (filename, source) =>
+          for {
+            api <- parse(source, filename)
+          } yield (filename, api)
+      }
+      .map(_.toMap)
+
+  def parse(source: String, filename: String): Result[OpenAPI] = parse(new StringReader(source), filename)
 
   def parse(reader: Reader, filename: String): Result[OpenAPI] = {
     val stream = NamedStreamReader(reader, filename)

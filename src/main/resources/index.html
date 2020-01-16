@@ -51,6 +51,52 @@
   text-decoration: underline;
 }
 
+.editor-tabs {
+  display: flex;
+  flex-direction: row;
+
+  background: rgb(37,37,38);
+}
+.editor-tabs .tab {
+  display: flex;
+  padding: 10px 30px 10px 10px;
+  margin: 0 1px 0 0;
+  position: relative;
+
+  color: #edede3;
+  font-family: Menlo, Monaco, "Courier New", monospace;
+  font-weight: lighter;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-decoration: none;
+  background: rgb(45, 45, 45);
+}
+
+.editor-tabs .tab:hover .close {
+  display: block;
+}
+
+.editor-tabs .tab .close {
+  display: block;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 36px;
+}
+
+.editor-tabs .tab .close svg {
+  height: 10px;
+  width: 10px;
+  margin: 13px;
+  fill: #edede3;
+}
+
+.editor-tabs .tab.active-tab {
+  background: rgb(30, 30, 30);
+}
+
 textarea.console {
   display: block;
   width: 100%;
@@ -60,10 +106,25 @@ textarea.console {
 </head>
 <body>
 
-
 <form name="compileForm" method="POST" action="/api/compile">
   <div>
-  <div id="editor"></div>
+  <div clas="editor-wrapper">
+    <div class="editor-tabs" id="editor-tabs">
+<!--      <a class="tab active-tab" href="#openapi.yaml">openapi.yaml</a>-->
+<!--      <a class="tab" href="#external.yaml">-->
+<!--        <span class="file">-->
+<!--          external.yaml-->
+<!--        </span>-->
+<!--        <span class="close">-->
+<!--          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">-->
+<!--            <polygon points="2.707,48.707 25,26.414 47.293,48.707 48.707,47.293 26.414,25 48.707,2.707 47.293,1.293 25,23.586 2.707,1.293 1.293,2.707 23.586,25 1.293,47.293"/>-->
+<!--          </svg>-->
+<!--        </span>-->
+<!--      </a>-->
+<!--      <a class="tab" href="#add">+</a>-->
+    </div>
+    <div id="editor"></div>
+  </div>
   <button type="submit">Compile</button>
   </div>
 </form>
@@ -814,6 +875,20 @@ components:
 #      name: api_key
 #      in: header
 </script>
+<script id="external-example" type="application/yaml">
+openapi: 3.0.0
+info:
+  version: "1.0.0"
+  title: Example of external file
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+</script>
 <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/monaco-editor@0.18.1/min/vs/loader.min.js"></script>
 <script type="text/javascript">
 "use strict";
@@ -830,12 +905,13 @@ components:
 
     require(['vs/language/yaml/monaco.contribution'], function () {
 
-      const modelUri = monaco.Uri.parse('schema://openapi.json');
+      const modelUri = monaco.Uri.parse('schema://openapi.yaml');
       const example = document.getElementById("example").innerText;
+      const indexModel = monaco.editor.createModel(example.trimStart(), 'yaml', modelUri);
+
       const editor = monaco.editor.create(document.getElementById('editor'), {
         language: 'yaml',
-        model: monaco.editor.createModel(example.trimStart(), 'yaml', modelUri),
-
+        model: indexModel,
         theme: 'vs-dark',
         automaticLayout: true,
         showFoldingControls: 'always',
@@ -860,12 +936,104 @@ components:
         ],
       });
 
+      const externalTabs = {};
+      const tabs = document.getElementById("editor-tabs");
+      tabs.addEventListener("dblclick", function (e) {
+        e.preventDefault();
+
+        const filename = (prompt("File name", "external.yaml") || "").trim();
+        if(filename ) {
+          if(externalTabs.hasOwnProperty(filename)) {
+            externalTabs[filename].click();
+          } else {
+            const modelUri = monaco.Uri.parse('schema://' + filename);
+            const example = document.getElementById("external-example").innerText;
+            const model = monaco.editor.createModel(example.trimStart(), 'yaml', modelUri);
+
+            const tab = document.createElement("a");
+            externalTabs[filename] = tab;
+            tab.append(filename);
+
+            tab.classList.add("tab", "active-tab");
+            tab.setAttribute("href", "#" + filename);
+            tab.editorModel = model;
+            tab.addEventListener("click", function (e) {
+              console.log("set active index tab");
+              e.preventDefault();
+              e.stopPropagation();
+              editor.setModel(tab.editorModel);
+              for(let t in externalTabs) {
+                if(externalTabs.hasOwnProperty(t)) {
+                  externalTabs[t].classList.remove("active-tab");
+                }
+              }
+              indexTab.classList.remove("active-tab");
+              tab.classList.add("active-tab");
+            });
+
+            const close = document.createElement("span");
+            tab.append(close);
+            close.classList.add("close");
+            close.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+                <polygon points="2.707,48.707 25,26.414 47.293,48.707 48.707,47.293 26.414,25 48.707,2.707 47.293,1.293 25,23.586 2.707,1.293 1.293,2.707 23.586,25 1.293,47.293"/>
+              </svg>
+            `;
+            close.addEventListener("click", function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+
+              if(tab.classList.contains("active-tab")) {
+                indexTab.click();
+              }
+
+              delete externalTabs[filename];
+              tab.remove();
+            });
+
+            tabs.append(tab);
+            tab.click();
+          }
+        }
+      });
+
+      const indexTab = document.createElement("a");
+      indexTab.append("openapi.yaml");
+      indexTab.classList.add("tab", "active-tab");
+      indexTab.setAttribute("href", "#openapi.yaml");
+      indexTab.editorModel = indexModel;
+      indexTab.addEventListener("click", function (e) {
+        console.log("set active index tab");
+        e.preventDefault();
+        editor.setModel(indexTab.editorModel);
+        indexTab.classList.add("active-tab");
+        for(let tab in externalTabs) {
+          if(externalTabs.hasOwnProperty(tab)) {
+            externalTabs[tab].classList.remove("active-tab");
+          }
+        }
+      });
+      tabs.append(indexTab);
+
       const logs = document.getElementById("logs");
       const result = document.getElementById("result");
       const form = document.forms["compileForm"];
       form.addEventListener("submit", async function (e) {
         e.preventDefault();
-        const source = editor.getValue().trimStart();
+
+        const source = indexModel.getValue().trimStart();
+        const externalSources = {};
+        for(let tab in externalTabs) {
+          if(externalTabs.hasOwnProperty(tab)) {
+            externalSources[tab] = externalTabs[tab].editorModel.getValue().trimStart();
+          }
+        }
+
+        const request = {
+          source: source,
+          external: externalSources
+        };
+
         const action = form.action;
         const method = form.method;
 
@@ -873,7 +1041,7 @@ components:
         result.innerHTML = "";
         const response = await fetch(action, {
           method: method,
-          body: source
+          body: JSON.stringify(request)
         });
         const json = await response.json();
         json.log.map(function (record) {
