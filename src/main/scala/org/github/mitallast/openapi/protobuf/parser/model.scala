@@ -181,7 +181,7 @@ final case class ApiTag(
   externalDocs: Option[ExternalDocumentation]
 )
 
-final case class Paths(node: MappingNode, values: ScalarMap[String, PathItem])
+final case class Paths(values: ScalarMap[String, PathItem])
 
 sealed trait HttpMethod
 object HttpMethod {
@@ -323,7 +323,9 @@ sealed trait SchemaReference {
   def id: Scalar[String]
 }
 final case class ComponentsReference(id: Scalar[String]) extends SchemaReference
-final case class ExternalReference(file: Scalar[String], id: Scalar[String]) extends SchemaReference
+final case class ExternalReference(file: Scalar[String], $ref: ComponentsReference) extends SchemaReference {
+  def id: Scalar[String] = $ref.id
+}
 
 final case class Reference(node: MappingNode, $ref: SchemaReference, extensions: ScalarMap[String, Node]) extends Schema
 final case class SchemaNormal(

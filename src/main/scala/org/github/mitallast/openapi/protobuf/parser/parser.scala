@@ -3,7 +3,7 @@ package org.github.mitallast.openapi.protobuf.parser
 import java.io.{FileReader, Reader}
 
 import cats.data._
-import cats.effect.ExitCode
+import cats.effect.{ExitCode, IO}
 import cats.implicits._
 import org.yaml.snakeyaml.composer.Composer
 import org.yaml.snakeyaml.error.{Mark, MarkedYAMLException, YAMLException}
@@ -14,6 +14,7 @@ import org.yaml.snakeyaml.resolver.Resolver
 import org.github.mitallast.openapi.protobuf.logging._
 
 import scala.jdk.CollectionConverters._
+import scala.util.matching.Regex
 
 object NamedStreamReader {
   def apply(filename: String): NamedStreamReader = apply(new FileReader(filename), filename)
@@ -29,20 +30,21 @@ final class NamedStreamReader(reader: Reader, name: String) extends StreamReader
 
 object OpenAPIParser {
 
-  type Logging[A] = Writer[Vector[LogMessage], A]
+  private val schemaRef: Regex = "^#/components/schemas/([a-zA-Z0-9_]+)$".r
+  private val externalRef: Regex = "^([a-z-A-Z0-9_\\.]+.ya?ml)#/components/schemas/([a-zA-Z0-9_]+)$".r
+
+  type Logging[A] = WriterT[IO, Vector[LogMessage], A]
   type Result[A] = EitherT[Logging, ExitCode, A]
 
-  @inline def log(message: LogMessage): Result[Unit] = EitherT.liftF(Writer.tell(Vector(message)))
+  @inline def log(message: LogMessage): Result[Unit] = EitherT.liftF(WriterT.tell(Vector(message)))
   @inline def info(node: Node, message: String): Result[Unit] = log(InfoMessage(node.getStartMark, message))
   @inline def warning(mark: Mark, message: String): Result[Unit] = log(WarningMessage(mark, message))
   @inline def warning(node: Node, message: String): Result[Unit] = warning(node.getStartMark, message)
   @inline def error[A](err: ErrorMessage): Result[A] = log(err).flatMap(_ => EitherT.leftT(ExitCode.Error))
   @inline def error[A](mark: Mark, message: String): Result[A] = error(ErrorMessage(mark, message))
   @inline def error[A](node: Node, message: String): Result[A] = error(node.getStartMark, message)
-  @inline
-  def pure[A](value: A): Result[A] = EitherT.pure(value)
-  @inline
-  val unit: Result[Unit] = pure(())
+  @inline def pure[A](value: A): Result[A] = EitherT.pure(value)
+  @inline val unit: Result[Unit] = pure(())
 
   final case class ObjectNode(node: MappingNode, fields: ScalarMap[String, Node]) {
     def allowedFields(names: String*): Result[Unit] =
@@ -328,8 +330,7 @@ object OpenAPIParser {
 
   def parsePaths(root: ObjectNode): Result[Paths] =
     for {
-      pathsNode <- root.requireObjectField("paths")
-      paths <- pathsNode.parseMap { (path, value) =>
+      paths <- root.parseMap("paths") { (path, value) =>
         for {
           _ <- require(
             path.value.matches("^(\\/([a-zA-Z0-9_]+|\\{[a-zA-Z0-9_]+\\}))+$"),
@@ -340,7 +341,7 @@ object OpenAPIParser {
           item <- parsePathItem(itemNode)
         } yield item
       }
-    } yield Paths(pathsNode.node, paths)
+    } yield Paths(paths)
 
   def parsePathItem(itemNode: ObjectNode): Result[PathItem] =
     for {
@@ -668,8 +669,9 @@ object OpenAPIParser {
 
   def parseRef($ref: Scalar[String]): Result[SchemaReference] =
     $ref.value match {
-      case util.schemaRef(id) => pure(ComponentsReference($ref.map(_ => id)))
-      case _                  => error($ref.node, "unsupported ref")
+      case schemaRef(id)         => pure(ComponentsReference($ref.map(_ => id)))
+      case externalRef(file, id) => pure(ExternalReference($ref.map(_ => file), ComponentsReference($ref.map(_ => id))))
+      case _                     => error($ref.node, s"invalid ref: ${$ref.value}")
     }
 
   def parseSchemaNormal(schemaNode: ObjectNode): Result[Schema] =

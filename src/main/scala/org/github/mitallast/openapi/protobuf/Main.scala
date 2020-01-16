@@ -13,6 +13,7 @@ import org.github.mitallast.openapi.protobuf.logging.implicits._
 import org.github.mitallast.openapi.protobuf.compiler.ProtoCompiler
 import org.github.mitallast.openapi.protobuf.writer.Writer
 import org.github.mitallast.openapi.protobuf.parser.OpenAPIParser
+import org.github.mitallast.openapi.protobuf.resolver.OpenAPIResolver
 import org.http4s._
 import org.http4s.circe._
 import org.http4s.dsl.io._
@@ -93,56 +94,59 @@ object Main extends IOApp {
     ExitCode.Error
   }
 
-  private def compile(filepath: Path): IO[ExitCode] = IO {
-    val logger = getLogger("compiler")
-
-    val filename = filepath.getFileName.toString
-    val reader = new FileReader(filepath.toFile)
-
-    val (logging, result) = (for {
-      api <- OpenAPIParser.parse(reader, filename)
-      protoFile <- ProtoCompiler.compile(api, filepath.toString)
-    } yield protoFile).value.run
-
-    logging.foreach {
-      case info: InfoMessage       => logger.info(info.messageWithLine)
-      case warning: WarningMessage => logger.warn(warning.messageWithLine)
-      case error: ErrorMessage     => logger.error(error.messageWithLine)
-    }
-    result match {
-      case Left(exitCode) =>
-        val errors = logging.count {
-          case _: ErrorMessage => true
-          case _               => false
+  private def compile(filepath: Path): IO[ExitCode] =
+    for {
+      filename <- IO(filepath.getFileName.toString)
+      reader <- IO(new FileReader(filepath.toFile))
+      resolver <- IO(OpenAPIResolver())
+      (logging, result) <- (for {
+        api <- OpenAPIParser.parse(reader, filename)
+        protoFile <- ProtoCompiler.compile(api, filepath.toString, resolver)
+      } yield protoFile).value.run
+      exitCode <- IO {
+        val logger = getLogger("compiler")
+        logging.foreach {
+          case info: InfoMessage       => logger.info(info.messageWithLine)
+          case warning: WarningMessage => logger.warn(warning.messageWithLine)
+          case error: ErrorMessage     => logger.error(error.messageWithLine)
         }
-        logger.info(s"errors: $errors")
-        exitCode
-      case Right(protoFile) =>
-        val source = Writer.writeFile(protoFile)
-        println(source)
-        Files.write(
-          Paths.get(protoFile.path.value),
-          source.getBytes("UTF-8"),
-          StandardOpenOption.CREATE,
-          StandardOpenOption.TRUNCATE_EXISTING
-        )
-        ExitCode.Success
-    }
-  }
+        result match {
+          case Left(exitCode) =>
+            val errors = logging.count {
+              case _: ErrorMessage => true
+              case _               => false
+            }
+            logger.info(s"errors: $errors")
+            exitCode
+          case Right(protoFile) =>
+            val source = Writer.writeFile(protoFile)
+            println(source)
+            Files.write(
+              Paths.get(protoFile.path.value),
+              source.getBytes("UTF-8"),
+              StandardOpenOption.CREATE,
+              StandardOpenOption.TRUNCATE_EXISTING
+            )
+            ExitCode.Success
+        }
+      }
+    } yield exitCode
 
   private def server(port: Int, host: String): IO[ExitCode] = {
     val logger = getLogger("server")
     val api = HttpRoutes.of[IO] {
       case request @ POST -> Root / "compile" =>
         request.decode[String] { yaml =>
+          val filename = "openapi.yaml"
           for {
+            reader <- blocker.delay[IO, StringReader](new StringReader(yaml))
+            resolver = OpenAPIResolver.apply(Map.empty)
+            result <- (for {
+              api <- OpenAPIParser.parse(reader, filename)
+              protoFile <- ProtoCompiler.compile(api, filename, resolver)
+            } yield protoFile).value.run
             source <- blocker.delay[IO, CompileResponse] {
-              val filename = "openapi.yaml"
-              val reader = new StringReader(yaml)
-              (for {
-                api <- OpenAPIParser.parse(reader, filename)
-                protoFile <- ProtoCompiler.compile(api, filename)
-              } yield protoFile).value.run match {
+              result match {
                 case (logs, Left(_)) =>
                   CompileResponse(logs, None)
                 case (logs, Right(protoFile)) =>

@@ -1,7 +1,6 @@
 # OpenAPI v3 support
 
 Not supported:
- - external `$ref`
  - `default` in enums, parameters and object fields
  - `minimum` in parameters and object fields
  - `maximum` in parameters and object fields
@@ -84,6 +83,7 @@ Supports:
 - `date` (compiles as `string`)
 - `datetime` (compiles as `string`)
 - `$ref` to `#/components/schemas/{name}`
+- `$ref` to `external.yaml#/components/schemas/{name}`
 - `array`
 - `oneOf`
 
@@ -95,6 +95,7 @@ Array items supported:
 - `date` (compiles as `string`)
 - `datetime` (compiles as `string`)
 - `$ref` to `#/components/schemas/{name}`
+- `$ref` to `external.yaml#/components/schemas/{name}`
 
 Not supports:
  - `minimum`
@@ -218,6 +219,7 @@ Properties supported:
  - `date` (compiles as `string`)
  - `datetime` (compiles as `string`)
  - `$ref` to `#/components/schemas/{name}`
+ - `$ref` to `external.yaml#/components/schemas/{name}`
  - `array`
  - `oneOf`
 
@@ -229,3 +231,4 @@ Properties supported:
  - `date` (compiles as `string`)
  - `datetime` (compiles as `string`)
  - `$ref` to `#/components/schemas/{name}`
+ - `$ref` to `external.yaml#/components/schemas/{name}`

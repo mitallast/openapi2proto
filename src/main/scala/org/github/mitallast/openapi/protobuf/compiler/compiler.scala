@@ -3,11 +3,12 @@ package org.github.mitallast.openapi.protobuf.compiler
 import java.nio.file.Paths
 
 import cats.data._
-import cats.effect.ExitCode
+import cats.effect.{ExitCode, IO}
 import cats.implicits._
 import org.github.mitallast.openapi.protobuf.logging._
 import org.github.mitallast.openapi.protobuf.parser._
 import org.github.mitallast.openapi.protobuf.model._
+import org.github.mitallast.openapi.protobuf.resolver.OpenAPIResolver
 import org.yaml.snakeyaml.nodes.{Node, ScalarNode, SequenceNode}
 
 import scala.jdk.CollectionConverters._
@@ -145,10 +146,11 @@ object ProtoCompiler {
 
   type Extensions = ScalarMap[String, Node]
 
-  type Logging[A] = Writer[Vector[LogMessage], A]
+  type Logging[A] = WriterT[IO, Vector[LogMessage], A]
   type Result[A] = EitherT[Logging, ExitCode, A]
+  type Resolver = OpenAPIResolver[Result]
 
-  @inline def log(message: LogMessage): Result[Unit] = EitherT.liftF(Writer.tell(Vector(message)))
+  @inline def log(message: LogMessage): Result[Unit] = EitherT.liftF(WriterT.tell(Vector(message)))
   @inline def info(node: Node, message: String): Result[Unit] = log(InfoMessage(node.getStartMark, message))
   @inline def warning(node: Node, message: String): Result[Unit] = log(WarningMessage(node.getStartMark, message))
   @inline def error[A](err: ErrorMessage): Result[A] = log(err).flatMap(_ => EitherT.leftT(ExitCode.Error))
@@ -157,15 +159,16 @@ object ProtoCompiler {
   @inline def left: Result[Unit] = EitherT.leftT(ExitCode.Error)
   val unit: Result[Unit] = pure(())
 
-  def compile(api: OpenAPI, path: String): Result[ProtoFile] =
+  def compile(api: OpenAPI, path: String, resolver: Resolver): Result[ProtoFile] =
     for {
       packageName <- compilePackageName(api, path)
       protoFile = ProtoFile.builder(packageName)
       _ = protoFile += ImportStatement("google/api/annotations.proto")
       _ = protoFile += ImportStatement("google/protobuf/wrappers.proto")
-      componentsValid <- compileComponents(protoFile, api)
-      serviceValid <- compileService(protoFile, api)
-      _ <- if (componentsValid && serviceValid) unit else left
+      componentsValid <- compileComponents(protoFile, api, resolver)
+      serviceValid <- compileService(protoFile, api, resolver)
+      resolvedValid <- compileResolved(protoFile, resolver)
+      _ <- if (componentsValid && serviceValid && resolvedValid) unit else left
     } yield protoFile.build
 
   def compileExtensionString(ext: Extensions, key: String): Result[Option[Scalar[String]]] =
@@ -220,13 +223,19 @@ object ProtoCompiler {
       }
     } yield reserved
 
-  def compileSchemaRef(api: OpenAPI, $ref: SchemaReference): Result[Schema] =
+  def compileSchemaRef(api: OpenAPI, $ref: SchemaReference, resolver: Resolver): Result[Schema] =
     $ref match {
       case ComponentsReference(id) =>
         for {
           _ <- require(api.components.schemas.contains(id), id.node, s"component schema $id does not exists")
         } yield api.components.schemas(id)
-      case _ => error($ref.id.node, "unsupported ref")
+      case ExternalReference(file, ComponentsReference(id)) =>
+        for {
+          externalApi <- resolver.resolve(file)
+          schemas = externalApi.components.schemas
+          _ <- require(schemas.contains(id), id.node, s"component schema $file $id does not exists")
+        } yield schemas(id)
+      case _ => error($ref.id.node, s"unsupported ref: ${$ref}")
     }
 
   def compileFullIdentifier(node: Node, value: String): Result[FullIdentifier] =
@@ -242,14 +251,26 @@ object ProtoCompiler {
       EitherT.pure(Identifier(value.value))
     } else error(value.node, "not valid identifier")
 
-  def compileComponents(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
+  def compileResolved(protoFile: ProtoFileBuilder, resolver: Resolver): Result[Boolean] =
+    for {
+      resolved <- resolver.resolved()
+      valid <- resolved
+        .traverse[Result, Boolean] { api =>
+          compileComponents(protoFile, api, resolver)
+        }
+        .map { results =>
+          results.forall(_ == true)
+        }
+    } yield valid
+
+  def compileComponents(protoFile: ProtoFileBuilder, api: OpenAPI, resolver: Resolver): Result[Boolean] =
     for {
       valid <- api.components.schemas.toVector
         .traverse[Result, Either[ExitCode, Unit]] {
           case (typeName, EnumSchema(schema)) =>
             compileComponentEnum(protoFile, typeName, schema).attempt
           case (typeName, ObjectSchema(schema)) =>
-            compileComponentObject(protoFile, typeName, api, schema).attempt
+            compileComponentObject(protoFile, typeName, api, schema, resolver).attempt
           case (typeName, schema) =>
             warning(schema.node, s"ignore component: $typeName").attempt
         }
@@ -260,7 +281,8 @@ object ProtoCompiler {
     protoFile: ProtoFileBuilder,
     typeName: Scalar[String],
     api: OpenAPI,
-    schema: SchemaNormal
+    schema: SchemaNormal,
+    resolver: Resolver
   ): Result[Unit] =
     for {
       _ <- requireNotRef(schema)
@@ -274,7 +296,7 @@ object ProtoCompiler {
         .traverse[Result, Either[ExitCode, Unit]] {
           case (fieldName, schema) =>
             val required = requiredFields.contains(fieldName.value)
-            compileField(messageBuilder, fieldName, api, schema, schema.extensions, required).attempt
+            compileField(messageBuilder, fieldName, api, schema, schema.extensions, required, resolver).attempt
         }
         .map(_.forall(_.isRight))
       _ <- if (valid) unit else left
@@ -315,7 +337,7 @@ object ProtoCompiler {
       }
     } yield id
 
-  def compileService(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
+  def compileService(protoFile: ProtoFileBuilder, api: OpenAPI, resolver: Resolver): Result[Boolean] =
     for {
       serviceName <- compileServiceName(api)
       serviceBuilder = Service.builder(serviceName)
@@ -329,7 +351,7 @@ object ProtoCompiler {
         }
         .traverse[Result, Either[ExitCode, Unit]] {
           case (path, method, op) =>
-            compileRpc(protoFile, serviceBuilder, method, path, op, api).attempt
+            compileRpc(protoFile, serviceBuilder, method, path, op, api, resolver).attempt
         }
         .map(_.forall(_.isRight))
       _ = protoFile += serviceBuilder.build
@@ -341,7 +363,8 @@ object ProtoCompiler {
     method: HttpMethod,
     path: Scalar[String],
     op: Operation,
-    api: OpenAPI
+    api: OpenAPI,
+    resolver: Resolver
   ): Result[Unit] =
     for {
       _ <- require(op.operationId.isDefined, op.node, "require operationId")
@@ -360,7 +383,7 @@ object ProtoCompiler {
             _ <- require(p.schema.isDefined, p.node, "parameter schema is required")
             schema = p.schema.get
             _ <- requireNotRef(schema)
-            _ <- compileField(requestBuilder, p.name, api, schema, p.extensions, p.required.exists(_.value))
+            _ <- compileField(requestBuilder, p.name, api, schema, p.extensions, p.required.exists(_.value), resolver)
           } yield ()).attempt
         }
         .map(_.forall(_.isRight))
@@ -373,7 +396,8 @@ object ProtoCompiler {
             requestBody.content,
             Scalar(requestBody.node, "request_body"),
             Identifier("body"),
-            api
+            api,
+            resolver
           ).attempt
             .map(_.isRight)
       }
@@ -404,7 +428,8 @@ object ProtoCompiler {
                 response.content.get,
                 Scalar(response.node, "response_body"),
                 Identifier("response_body"),
-                api
+                api,
+                resolver
               ).attempt
           } yield true
       }
@@ -423,7 +448,8 @@ object ProtoCompiler {
     content: Content,
     fieldName: Scalar[String],
     context: Identifier,
-    api: OpenAPI
+    api: OpenAPI,
+    resolver: Resolver
   ): Result[Unit] =
     for {
       _ <- require(content.media.nonEmpty, content.node, s"$context content should not be empty")
@@ -434,7 +460,7 @@ object ProtoCompiler {
       fieldId <- compileFieldIdentifier(media.extensions, fieldName)
       _ = mediaType.value match {
         case "application/json" =>
-          compileField(builder, fieldId, api, schema, media.extensions, required = true)
+          compileField(builder, fieldId, api, schema, media.extensions, required = true, resolver)
         case "text/plain" =>
           for {
             _ <- schema match {
@@ -465,11 +491,12 @@ object ProtoCompiler {
     api: OpenAPI,
     schema: Schema,
     extensions: Extensions,
-    required: Boolean
+    required: Boolean,
+    resolver: Resolver
   ): Result[Unit] =
     for {
       fieldIdentifier <- compileFieldIdentifier(extensions, fiendName)
-      _ <- compileField(builder, fieldIdentifier, api, schema, extensions, required)
+      _ <- compileField(builder, fieldIdentifier, api, schema, extensions, required, resolver)
     } yield ()
 
   def compileField(
@@ -478,7 +505,8 @@ object ProtoCompiler {
     api: OpenAPI,
     schema: Schema,
     extensions: Extensions,
-    required: Boolean
+    required: Boolean,
+    resolver: Resolver
   ): Result[Unit] =
     schema match {
       case IntegerSchema(integer) =>
@@ -519,13 +547,13 @@ object ProtoCompiler {
         } yield ()
       case reference: Reference =>
         for {
-          fieldType <- compileComponentRef(api, reference)
+          fieldType <- compileComponentRef(api, reference, resolver)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
       case ArraySchema(array) =>
         for {
-          fieldType <- compileArrayType(api, array)
+          fieldType <- compileArrayType(api, array, resolver)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += RepeatedField(fieldType, fieldId, fieldNum)
         } yield ()
@@ -544,7 +572,7 @@ object ProtoCompiler {
                   case DateSchema(date)       => compileDate(date, required = true)
                   case DateTimeSchema(date)   => compileDateTime(date, required = true)
                   case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
-                  case ref: Reference         => compileComponentRef(api, ref)
+                  case ref: Reference         => compileComponentRef(api, ref, resolver)
                   case schema                 => error(schema.node, "schema is not supported at oneOf level")
                 }
                 fieldName <- fieldType match {
@@ -653,9 +681,9 @@ object ProtoCompiler {
       if (required) Identifier("bool")
       else FullIdentifier("google.protobuf.BoolValue")
 
-  def compileComponentRef(api: OpenAPI, schema: Reference): Result[TypeIdentifier] =
+  def compileComponentRef(api: OpenAPI, schema: Reference, resolver: Resolver): Result[TypeIdentifier] =
     for {
-      refSchema <- compileSchemaRef(api, schema.$ref)
+      refSchema <- compileSchemaRef(api, schema.$ref, resolver)
       typeName: TypeIdentifier <- refSchema match {
         case IntegerSchema(integer) => compileInteger(integer, required = true)
         case NumberSchema(number)   => compileNumber(number, required = true)
@@ -670,14 +698,14 @@ object ProtoCompiler {
       }
     } yield typeName
 
-  def compileArrayType(api: OpenAPI, schema: SchemaNormal): Result[TypeIdentifier] =
+  def compileArrayType(api: OpenAPI, schema: SchemaNormal, resolver: Resolver): Result[TypeIdentifier] =
     for {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
       _ <- require(schema.items.isDefined, schema.node, "array items schema is required")
       items = schema.items.get
       format <- items match {
-        case ref: Reference         => compileComponentRef(api, ref)
+        case ref: Reference         => compileComponentRef(api, ref, resolver)
         case IntegerSchema(integer) => compileInteger(integer, required = true)
         case NumberSchema(number)   => compileNumber(number, required = true)
         case StringSchema(string)   => compileString(string, required = true)
