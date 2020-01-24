@@ -11,6 +11,7 @@ import org.yaml.snakeyaml.nodes._
 import org.yaml.snakeyaml.parser.ParserImpl
 import org.yaml.snakeyaml.reader.StreamReader
 import org.yaml.snakeyaml.resolver.Resolver
+import org.github.mitallast.openapi.protobuf.common._
 import org.github.mitallast.openapi.protobuf.logging._
 
 import scala.jdk.CollectionConverters._
@@ -32,19 +33,6 @@ object OpenAPIParser {
 
   private val schemaRef: Regex = "^#/components/schemas/([a-zA-Z0-9_]+)$".r
   private val externalRef: Regex = "^([a-z-A-Z0-9_\\.]+.ya?ml)#/components/schemas/([a-zA-Z0-9_]+)$".r
-
-  type Logging[A] = WriterT[IO, Vector[LogMessage], A]
-  type Result[A] = EitherT[Logging, ExitCode, A]
-
-  @inline def log(message: LogMessage): Result[Unit] = EitherT.liftF(WriterT.tell(Vector(message)))
-  @inline def info(node: Node, message: String): Result[Unit] = log(InfoMessage(node.getStartMark, message))
-  @inline def warning(mark: Mark, message: String): Result[Unit] = log(WarningMessage(mark, message))
-  @inline def warning(node: Node, message: String): Result[Unit] = warning(node.getStartMark, message)
-  @inline def error[A](err: ErrorMessage): Result[A] = log(err).flatMap(_ => EitherT.leftT(ExitCode.Error))
-  @inline def error[A](mark: Mark, message: String): Result[A] = error(ErrorMessage(mark, message))
-  @inline def error[A](node: Node, message: String): Result[A] = error(node.getStartMark, message)
-  @inline def pure[A](value: A): Result[A] = EitherT.pure(value)
-  @inline val unit: Result[Unit] = pure(())
 
   final case class ObjectNode(node: MappingNode, fields: ScalarMap[String, Node]) {
     def allowedFields(names: String*): Result[Unit] =
@@ -1045,7 +1033,4 @@ object OpenAPIParser {
     }
     require(unique, node, message)
   }
-
-  def require(f: Boolean, node: Node, message: => String): Result[Unit] =
-    if (f) unit else error(node, message)
 }

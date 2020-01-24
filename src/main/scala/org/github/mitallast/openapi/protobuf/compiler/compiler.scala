@@ -5,6 +5,7 @@ import java.nio.file.Paths
 import cats.data._
 import cats.effect.{ExitCode, IO}
 import cats.implicits._
+import org.github.mitallast.openapi.protobuf.common._
 import org.github.mitallast.openapi.protobuf.logging._
 import org.github.mitallast.openapi.protobuf.parser._
 import org.github.mitallast.openapi.protobuf.model._
@@ -143,21 +144,6 @@ object extractors {
 
 object ProtoCompiler {
   import extractors._
-
-  type Extensions = ScalarMap[String, Node]
-
-  type Logging[A] = WriterT[IO, Vector[LogMessage], A]
-  type Result[A] = EitherT[Logging, ExitCode, A]
-  type Resolver = OpenAPIResolver[Result]
-
-  @inline def log(message: LogMessage): Result[Unit] = EitherT.liftF(WriterT.tell(Vector(message)))
-  @inline def info(node: Node, message: String): Result[Unit] = log(InfoMessage(node.getStartMark, message))
-  @inline def warning(node: Node, message: String): Result[Unit] = log(WarningMessage(node.getStartMark, message))
-  @inline def error[A](err: ErrorMessage): Result[A] = log(err).flatMap(_ => EitherT.leftT(ExitCode.Error))
-  @inline def error[A](node: Node, message: String): Result[A] = error(ErrorMessage(node.getStartMark, message))
-  @inline def pure[A](value: A): Result[A] = EitherT.pure(value)
-  @inline def left: Result[Unit] = EitherT.leftT(ExitCode.Error)
-  val unit: Result[Unit] = pure(())
 
   def compile(api: OpenAPI, path: String, resolver: Resolver): Result[ProtoFile] =
     for {
@@ -733,11 +719,4 @@ object ProtoCompiler {
 
   def requireNoFormat(schema: SchemaNormal): Result[Unit] =
     require(schema.format.isEmpty, schema.node, "format is not allowed")
-
-  def require(test: Boolean, node: Node, message: String): Result[Unit] =
-    if (test) {
-      EitherT.pure(())
-    } else {
-      error(node, message)
-    }
 }

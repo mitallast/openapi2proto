@@ -8,7 +8,7 @@ object Writer {
   def writeFile(file: ProtoFile): String = write(file)
 
   def write[T](t: T)(implicit writer: Writer[T]): String = {
-    val builder = StringBuilder.newBuilder
+    val builder = new StringBuilder()
     writer.write(t, builder)
     builder.toString()
   }
@@ -76,7 +76,7 @@ object instances {
   }
 
   implicit val ProtoSyntaxWriter: Writer[ProtoSyntax] = instance { (_, builder) =>
-    builder << ("""syntax = "proto3"""") << end << newline
+    builder << """syntax = "proto3"""" << end << newline
   }
 
   implicit val OptionStatementWriter: Writer[OptionStatement] = instance { (option, builder) =>
