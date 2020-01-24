@@ -31,6 +31,9 @@ object Dependencies {
     val circeGeneric = "io.circe" %% "circe-generic" % "0.12.3"
 
     val snakeyaml = "org.yaml" % "snakeyaml" % "1.25"
+
+    // required only for compilation to GraalVM native-image
+    val substratevm = "com.oracle.substratevm" % "svm" % "19.1.0" % Provided
   }
 
   object Test {
@@ -52,6 +55,7 @@ object Dependencies {
     http4sCirce,
     circeGeneric,
     snakeyaml,
+    substratevm,
     scalacheck,
     scalatest
   )

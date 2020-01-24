@@ -87,9 +87,12 @@ addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
 
 enablePlugins(GraalVMNativeImagePlugin)
 
+graalVMNativeImageOptions += "--no-server"
 graalVMNativeImageOptions += "--no-fallback"
 graalVMNativeImageOptions += "--allow-incomplete-classpath"
 graalVMNativeImageOptions += "--report-unsupported-elements-at-runtime"
+graalVMNativeImageOptions += "--initialize-at-build-time"
+graalVMNativeImageOptions += "-H:UnsafeAutomaticSubstitutionsLogLevel=3"
 
 // RPM packaging
 
