@@ -458,7 +458,7 @@ object ProtoCompiler {
       _ <- require(media.schema.isDefined, media.node, "media type schema is required")
       schema = media.schema.get
       fieldId <- compileFieldIdentifier(media.extensions, fieldName)
-      _ = mediaType.value match {
+      _ <- mediaType.value match {
         case "application/json" =>
           compileField(builder, fieldId, api, schema, media.extensions, required = true, resolver)
         case "text/plain" =>
