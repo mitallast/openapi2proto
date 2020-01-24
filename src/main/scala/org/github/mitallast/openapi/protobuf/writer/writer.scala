@@ -58,12 +58,10 @@ object instances {
   }
 
   implicit val IdentWriter: Writer[Identifier] = instance { (id, builder) =>
-    valid(id.value, identifiers.ident)
     builder.append(id.value)
   }
 
   implicit val FullIdentWriter: Writer[FullIdentifier] = instance { (id, builder) =>
-    valid(id.value, identifiers.fullIdent)
     builder.append(id.value)
   }
 

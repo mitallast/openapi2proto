@@ -288,6 +288,7 @@ object ProtoCompiler {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
       typeIdentifier <- compileIdentifier(typeName)
+      _ <- require(!protoFile.contains(typeIdentifier), typeName.node, "already defined")
       messageBuilder = Message.builder(typeIdentifier)
       reserved <- compileReserved(schema)
       _ = messageBuilder.reserved(reserved)
@@ -317,6 +318,8 @@ object ProtoCompiler {
           }
           (for {
             id <- compileIdentifier(formatted)
+            value = enumBuilder.nextValueNum
+            _ <- require(!enumBuilder.contains(value), constant.node, s"Value $value already used")
             _ = enumBuilder += EnumValue(id, enumBuilder.nextValueNum, Vector.empty)
           } yield ()).attempt
         }
@@ -370,9 +373,11 @@ object ProtoCompiler {
       _ <- require(op.operationId.isDefined, op.node, "require operationId")
       operationId = op.operationId.get
       requestType <- compileTypeName(operationId.map(_.capitalize + "Request"))
+      _ <- require(!protoFile.contains(requestType), operationId.node, s"$requestType already defined")
       responseType <- compileTypeName(operationId.map(_.capitalize + "Response"))
+      _ <- require(!protoFile.contains(responseType), operationId.node, s"$responseType already defined")
       operationId <- compileIdentifier(operationId)
-      http = RpcOption.builder(FullIdentifier("google.api.http"))
+      http = RpcOption.builder(FullIdentifier.http)
       _ = http += OptionStatement(Identifier(method.toString.toLowerCase), path.value)
 
       requestBuilder = Message.builder(requestType)
@@ -395,7 +400,7 @@ object ProtoCompiler {
             requestBuilder,
             requestBody.content,
             Scalar(requestBody.node, "request_body"),
-            Identifier("body"),
+            Identifier.body,
             api,
             resolver
           ).attempt
@@ -427,7 +432,7 @@ object ProtoCompiler {
                 responseBuilder,
                 response.content.get,
                 Scalar(response.node, "response_body"),
-                Identifier("response_body"),
+                Identifier.response_body,
                 api,
                 resolver
               ).attempt
@@ -468,7 +473,7 @@ object ProtoCompiler {
               case _               => error(schema.node, s"$fieldName: schema type should be string")
             }
             fieldNum <- compileFieldNum(builder, media.extensions)
-            _ = builder += NormalField(Identifier("string"), fieldId, fieldNum, Vector.empty)
+            _ = builder += NormalField(Identifier.string, fieldId, fieldNum, Vector.empty)
           } yield ()
         case "application/octet-stream" =>
           for {
@@ -477,7 +482,7 @@ object ProtoCompiler {
               case _                     => error(schema.node, s"$fieldName: schema type should be binary string")
             }
             fieldNum <- compileFieldNum(builder, media.extensions)
-            _ = builder += NormalField(Identifier("bytes"), fieldId, fieldNum, Vector.empty)
+            _ = builder += NormalField(Identifier.bytes, fieldId, fieldNum, Vector.empty)
           } yield ()
         case _ =>
           error(mediaType.node, "unexpected media type")
@@ -601,10 +606,13 @@ object ProtoCompiler {
         case Some(constant) =>
           for {
             _ <- require(constant.value.matches("^\\d+$"), constant.node, "expected integer")
-          } yield constant.value.toInt
+            fieldNum = constant.value.toInt
+            _ <- require(!builder.contains(fieldNum), constant.node, s"field $fieldNum already defined")
+          } yield fieldNum
         case None =>
           pure(builder.nextFieldNum)
       }
+      _ = builder.use(fieldNum)
     } yield fieldNum
 
   def compileFieldIdentifier(extensions: Extensions, fieldName: Scalar[String]): Result[Identifier] =
@@ -623,12 +631,12 @@ object ProtoCompiler {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
       format <- (required, schema.format) match {
-        case (true, Some(FormatType.INTEGER32_FORMAT))  => pure(Identifier("int32"))
-        case (true, Some(FormatType.INTEGER64_FORMAT))  => pure(Identifier("int64"))
-        case (true, None)                               => pure(Identifier("int64"))
-        case (false, Some(FormatType.INTEGER32_FORMAT)) => pure(FullIdentifier("google.protobuf.Int32Value"))
-        case (false, Some(FormatType.INTEGER64_FORMAT)) => pure(FullIdentifier("google.protobuf.Int64Value"))
-        case (false, None)                              => pure(FullIdentifier("google.protobuf.Int64Value"))
+        case (true, Some(FormatType.INTEGER32_FORMAT))  => pure(Identifier.int32)
+        case (true, Some(FormatType.INTEGER64_FORMAT))  => pure(Identifier.int64)
+        case (true, None)                               => pure(Identifier.int64)
+        case (false, Some(FormatType.INTEGER32_FORMAT)) => pure(FullIdentifier.int32)
+        case (false, Some(FormatType.INTEGER64_FORMAT)) => pure(FullIdentifier.int64)
+        case (false, None)                              => pure(FullIdentifier.int64)
         case (_, Some(format))                          => error(schema.node, s"unexpected format: $format")
       }
     } yield format
@@ -638,12 +646,12 @@ object ProtoCompiler {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
       format <- (required, schema.format) match {
-        case (true, Some(FormatType.FLOAT_FORMAT))   => pure(Identifier("float"))
-        case (true, Some(FormatType.DOUBLE_FORMAT))  => pure(Identifier("double"))
-        case (true, None)                            => pure(Identifier("double"))
-        case (false, Some(FormatType.FLOAT_FORMAT))  => pure(FullIdentifier("google.protobuf.FloatValue"))
-        case (false, Some(FormatType.DOUBLE_FORMAT)) => pure(FullIdentifier("google.protobuf.DoubleValue"))
-        case (false, None)                           => pure(FullIdentifier("google.protobuf.DoubleValue"))
+        case (true, Some(FormatType.FLOAT_FORMAT))   => pure(Identifier.float)
+        case (true, Some(FormatType.DOUBLE_FORMAT))  => pure(Identifier.double)
+        case (true, None)                            => pure(Identifier.double)
+        case (false, Some(FormatType.FLOAT_FORMAT))  => pure(FullIdentifier.float)
+        case (false, Some(FormatType.DOUBLE_FORMAT)) => pure(FullIdentifier.double)
+        case (false, None)                           => pure(FullIdentifier.double)
         case (_, Some(format))                       => error(schema.node, s"unexpected format: $format")
       }
     } yield format
@@ -654,32 +662,32 @@ object ProtoCompiler {
       _ <- requireNotEnum(schema)
       _ <- requireNoFormat(schema)
     } yield
-      if (required) Identifier("string")
-      else FullIdentifier("google.protobuf.StringValue")
+      if (required) Identifier.string
+      else FullIdentifier.string
 
   def compileDate(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
     } yield
-      if (required) Identifier("string")
-      else FullIdentifier("google.protobuf.StringValue")
+      if (required) Identifier.string
+      else FullIdentifier.string
 
   def compileDateTime(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
     } yield
-      if (required) Identifier("string")
-      else FullIdentifier("google.protobuf.StringValue")
+      if (required) Identifier.string
+      else FullIdentifier.string
 
   def compileBoolean(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
     } yield
-      if (required) Identifier("bool")
-      else FullIdentifier("google.protobuf.BoolValue")
+      if (required) Identifier.bool
+      else FullIdentifier.bool
 
   def compileComponentRef(api: OpenAPI, schema: Reference, resolver: Resolver): Result[TypeIdentifier] =
     for {

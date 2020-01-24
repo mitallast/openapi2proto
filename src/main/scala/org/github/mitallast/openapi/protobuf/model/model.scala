@@ -2,32 +2,40 @@ package org.github.mitallast.openapi.protobuf.model
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import lexical._
-
 import scala.annotation.tailrec
 import scala.collection.mutable
 
 sealed trait ProtoSyntax
 case object ProtoSyntaxV3 extends ProtoSyntax
 
-final case class ProtoPath(value: String) {
-  valid(value, identifiers.protoPath)
-}
+final case class ProtoPath(value: String)
 
 sealed trait TypeIdentifier {
   def value: String
 }
-final case class Identifier(value: String) extends TypeIdentifier {
-  require(!value.isEmpty, "empty identifier is not allowed")
-  valid(value, identifiers.ident)
+object Identifier {
+  lazy val body: Identifier = Identifier("body")
+  lazy val response_body: Identifier = Identifier("response_body")
+  lazy val string: Identifier = Identifier("string")
+  lazy val bytes: Identifier = Identifier("bytes")
+  lazy val int32: Identifier = Identifier("int32")
+  lazy val int64: Identifier = Identifier("int64")
+  lazy val double: Identifier = Identifier("double")
+  lazy val float: Identifier = Identifier("float")
+  lazy val bool: Identifier = Identifier("bool")
 }
+final case class Identifier(value: String) extends TypeIdentifier
 object FullIdentifier {
-  val empty: FullIdentifier = FullIdentifier("google.protobuf.Empty")
+  lazy val int32: FullIdentifier = FullIdentifier("google.protobuf.Int32Value")
+  lazy val int64: FullIdentifier = FullIdentifier("google.protobuf.Int64Value")
+  lazy val float: FullIdentifier = FullIdentifier("google.protobuf.FloatValue")
+  lazy val double: FullIdentifier = FullIdentifier("google.protobuf.DoubleValue")
+  lazy val string: FullIdentifier = FullIdentifier("google.protobuf.StringValue")
+  lazy val bool: FullIdentifier = FullIdentifier("google.protobuf.BoolValue")
+  lazy val empty: FullIdentifier = FullIdentifier("google.protobuf.Empty")
+  lazy val http: FullIdentifier = FullIdentifier("google.api.http")
 }
-final case class FullIdentifier(value: String) extends TypeIdentifier {
-  require(!value.isEmpty, "empty identifier is not allowed")
-  valid(value, identifiers.fullIdent)
-}
+final case class FullIdentifier(value: String) extends TypeIdentifier
 
 object ProtoFile {
   def builder(packageName: FullIdentifier): ProtoFileBuilder =
@@ -76,15 +84,14 @@ final class ProtoFileBuilder(
     enums += enum
     this
   }
+  def contains(id: Identifier): Boolean = registeredMessages.contains(id)
+
   def +=(message: Message): ProtoFileBuilder = {
-    require(
-      !registeredMessages.contains(message.messageName),
-      s"${message.messageName.value}: message with same identifier already registered"
-    )
     registeredMessages += message.messageName
     messages += message
     this
   }
+
   def +=(service: Service): ProtoFileBuilder = {
     services += service
     this
@@ -116,11 +123,6 @@ final class EnumBuilder(private val enumName: Identifier) {
   private val used = mutable.Set.empty[Int]
   private val counter = new AtomicInteger()
 
-  private def use(num: Int): Unit = {
-    require(!used.contains(num))
-    used += num
-  }
-
   @tailrec
   def nextValueNum: Int = {
     val id = counter.getAndIncrement()
@@ -134,8 +136,10 @@ final class EnumBuilder(private val enumName: Identifier) {
     this
   }
 
+  def contains(num: Int): Boolean = used.contains(num)
+
   def +=(value: EnumValue): EnumBuilder = {
-    use(value.value)
+    used += value.value
     values += value
     this
   }
@@ -162,11 +166,6 @@ final class MessageBuilder(private val messageName: Identifier) {
   private val used = mutable.Set.empty[Int]
   private val counter = new AtomicInteger()
 
-  private def use(num: Int): Unit = {
-    require(!used.contains(num))
-    used += num
-  }
-
   @tailrec
   def nextFieldNum: Int = {
     val id = counter.incrementAndGet()
@@ -192,13 +191,11 @@ final class MessageBuilder(private val messageName: Identifier) {
     this
   }
 
+  def use(id: Int): Unit = used += id
+
+  def contains(id: Int): Boolean = used.contains(id)
+
   def +=(field: MessageField): MessageBuilder = {
-    field match {
-      case n: NormalField   => use(n.number)
-      case r: RepeatedField => use(r.number)
-      case m: MapField      => use(m.number)
-      case o: OneOf         => for (f <- o.fields) use(f.number)
-    }
     fields += field
     this
   }
