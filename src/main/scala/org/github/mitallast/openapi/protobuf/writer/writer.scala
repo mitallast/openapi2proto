@@ -118,6 +118,9 @@ object instances {
   implicit val ProtoFileWriter: Writer[ProtoFile] = instance { (file, builder) =>
     builder << file.syntax
     builder << newline
+    builder << "package " << file.packageName << end << newline
+    builder << newline
+
     builder << file.options
     builder << file.imports
     if (file.enums.nonEmpty) {

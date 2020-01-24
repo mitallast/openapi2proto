@@ -46,7 +46,7 @@ object lexical {
     val messageType: String = s"\\.?($ident\\.)*$messageName"
     val enumType: String = s"\\.?($ident\\.)*$enumName"
 
-    val protoPath: String = s"($ident\\/)*$ident\\.proto"
+    val protoPath: String = s"($fullIdent\\/)*$fullIdent\\.proto"
   }
 
   @inline

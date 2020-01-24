@@ -1,6 +1,6 @@
 package org.github.mitallast.openapi.protobuf
 
-import java.io.{File, FileReader, StringReader}
+import java.io.{File, FileReader}
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import cats.effect._
