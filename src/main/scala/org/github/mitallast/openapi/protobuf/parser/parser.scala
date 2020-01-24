@@ -3,7 +3,6 @@ package org.github.mitallast.openapi.protobuf.parser
 import java.io.{FileReader, Reader, StringReader}
 
 import cats.data._
-import cats.effect.{ExitCode, IO}
 import cats.implicits._
 import org.yaml.snakeyaml.composer.Composer
 import org.yaml.snakeyaml.error.{Mark, MarkedYAMLException, YAMLException}
@@ -12,7 +11,6 @@ import org.yaml.snakeyaml.parser.ParserImpl
 import org.yaml.snakeyaml.reader.StreamReader
 import org.yaml.snakeyaml.resolver.Resolver
 import org.github.mitallast.openapi.protobuf.common._
-import org.github.mitallast.openapi.protobuf.logging._
 
 import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex

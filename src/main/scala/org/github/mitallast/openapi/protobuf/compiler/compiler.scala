@@ -3,13 +3,11 @@ package org.github.mitallast.openapi.protobuf.compiler
 import java.nio.file.Paths
 
 import cats.data._
-import cats.effect.{ExitCode, IO}
+import cats.effect.ExitCode
 import cats.implicits._
 import org.github.mitallast.openapi.protobuf.common._
-import org.github.mitallast.openapi.protobuf.logging._
 import org.github.mitallast.openapi.protobuf.parser._
 import org.github.mitallast.openapi.protobuf.model._
-import org.github.mitallast.openapi.protobuf.resolver.OpenAPIResolver
 import org.yaml.snakeyaml.nodes.{Node, ScalarNode, SequenceNode}
 
 import scala.jdk.CollectionConverters._
@@ -381,15 +379,7 @@ object ProtoCompiler {
       validRequest <- op.requestBody match {
         case None => pure(true)
         case Some(requestBody) =>
-          compileContent(
-            http,
-            requestBuilder,
-            requestBody.content,
-            Scalar(requestBody.node, "request_body"),
-            Identifier.body,
-            api,
-            resolver
-          ).attempt
+          compileRequestContent(http, requestBuilder, requestBody, api, resolver).attempt
             .map(_.isRight)
       }
       _ = protoFile += requestBuilder.build
@@ -413,15 +403,7 @@ object ProtoCompiler {
           for {
             _ <- if (response.content.isEmpty) pure(true)
             else
-              compileContent(
-                http,
-                responseBuilder,
-                response.content.get,
-                Scalar(response.node, "response_body"),
-                Identifier.response_body,
-                api,
-                resolver
-              ).attempt
+              compileResponseContent(http, responseBuilder, response, api, resolver).attempt
           } yield true
       }
       _ = protoFile += responseBuilder.build
@@ -433,25 +415,39 @@ object ProtoCompiler {
       _ = service += rpc.build
     } yield ()
 
-  def compileContent(
+  def compileRequestContent(
     options: RpcOptionBuilder,
     builder: MessageBuilder,
-    content: Content,
-    fieldName: Scalar[String],
-    context: Identifier,
+    requestBody: RequestBody,
     api: OpenAPI,
     resolver: Resolver
   ): Result[Unit] =
     for {
-      _ <- require(content.media.nonEmpty, content.node, s"$context content should not be empty")
-      _ <- require(content.media.size == 1, content.node, s"$context content should contain only one media type")
+      fieldName <- pure(Scalar(requestBody.node, "request_body"))
+      content <- pure(requestBody.content)
+      _ <- require(content.media.nonEmpty, content.node, "request content should not be empty")
+      _ <- require(content.media.size == 1, content.node, "request content should contain only one media type")
       (mediaType, media) = content.media.entries.head
-      _ <- require(media.schema.isDefined, media.node, "media type schema is required")
+      _ <- require(media.schema.isDefined, media.node, "request media type schema is required")
       schema = media.schema.get
-      fieldId <- compileFieldIdentifier(media.extensions, fieldName)
       _ <- mediaType.value match {
         case "application/json" =>
-          compileField(builder, fieldId, api, schema, media.extensions, required = true, resolver)
+          // The name of the request field whose value is mapped to the HTTP request
+          // body, or `*` for mapping all request fields not captured by the path
+          // pattern to the HTTP body, or omitted for not having any HTTP request body.
+          schema match {
+            case ObjectSchema(objectSchema) =>
+              for {
+                _ <- compileInlineObject(builder, objectSchema, api, resolver)
+                _ = options += OptionStatement(Identifier.body, "*")
+              } yield ()
+            case _ =>
+              for {
+                fieldId <- compileFieldIdentifier(media.extensions, fieldName)
+                _ <- compileField(builder, fieldId, api, schema, media.extensions, required = true, resolver)
+                _ = options += OptionStatement(Identifier.body, fieldId.value)
+              } yield ()
+          }
         case "text/plain" =>
           for {
             _ <- schema match {
@@ -459,7 +455,9 @@ object ProtoCompiler {
               case _               => error(schema.node, s"$fieldName: schema type should be string")
             }
             fieldNum <- compileFieldNum(builder, media.extensions)
+            fieldId <- compileFieldIdentifier(media.extensions, fieldName)
             _ = builder += NormalField(Identifier.string, fieldId, fieldNum, Vector.empty)
+            _ = options += OptionStatement(Identifier.body, fieldId.value)
           } yield ()
         case "application/octet-stream" =>
           for {
@@ -468,13 +466,93 @@ object ProtoCompiler {
               case _                     => error(schema.node, s"$fieldName: schema type should be binary string")
             }
             fieldNum <- compileFieldNum(builder, media.extensions)
+            fieldId <- compileFieldIdentifier(media.extensions, fieldName)
             _ = builder += NormalField(Identifier.bytes, fieldId, fieldNum, Vector.empty)
+            _ = options += OptionStatement(Identifier.body, fieldId.value)
           } yield ()
         case _ =>
           error(mediaType.node, "unexpected media type")
       }
-      _ = options += OptionStatement(context, fieldId.value)
     } yield ()
+
+  def compileResponseContent(
+    options: RpcOptionBuilder,
+    builder: MessageBuilder,
+    response: ApiResponse,
+    api: OpenAPI,
+    resolver: Resolver
+  ): Result[Unit] =
+    for {
+      fieldName <- pure(Scalar(response.node, "response_body"))
+      content <- pure(response.content.get)
+      _ <- require(content.media.nonEmpty, content.node, "response content should not be empty")
+      _ <- require(content.media.size == 1, content.node, "response content should contain only one media type")
+      (mediaType, media) = content.media.entries.head
+      _ <- require(media.schema.isDefined, media.node, "response media type schema is required")
+      schema = media.schema.get
+      _ <- mediaType.value match {
+        case "application/json" =>
+          schema match {
+            case ObjectSchema(objectSchema) =>
+              // When option `response_body` omitted, the entire response message
+              // will be used as the HTTP response body.
+              for {
+                _ <- compileInlineObject(builder, objectSchema, api, resolver)
+              } yield ()
+            case _ =>
+              for {
+                fieldId <- compileFieldIdentifier(media.extensions, fieldName)
+                _ <- compileField(builder, fieldId, api, schema, media.extensions, required = true, resolver)
+                _ = options += OptionStatement(Identifier.response_body, fieldId.value)
+              } yield ()
+          }
+        case "text/plain" =>
+          for {
+            _ <- schema match {
+              case StringSchema(_) => unit
+              case _               => error(schema.node, s"$fieldName: schema type should be string")
+            }
+            fieldNum <- compileFieldNum(builder, media.extensions)
+            fieldId <- compileFieldIdentifier(media.extensions, fieldName)
+            _ = builder += NormalField(Identifier.string, fieldId, fieldNum, Vector.empty)
+            _ = options += OptionStatement(Identifier.response_body, fieldId.value)
+          } yield ()
+        case "application/octet-stream" =>
+          for {
+            _ <- schema match {
+              case BinaryStringSchema(_) => unit
+              case _                     => error(schema.node, s"$fieldName: schema type should be binary string")
+            }
+            fieldNum <- compileFieldNum(builder, media.extensions)
+            fieldId <- compileFieldIdentifier(media.extensions, fieldName)
+            _ = builder += NormalField(Identifier.bytes, fieldId, fieldNum, Vector.empty)
+            _ = options += OptionStatement(Identifier.response_body, fieldId.value)
+          } yield ()
+        case _ =>
+          error(mediaType.node, "unexpected media type")
+      }
+    } yield ()
+
+  def compileInlineObject(
+    messageBuilder: MessageBuilder,
+    schema: SchemaNormal,
+    api: OpenAPI,
+    resolver: Resolver
+  ): Result[Boolean] =
+    for {
+      _ <- requireNotRef(schema)
+      _ <- requireNotEnum(schema)
+      reserved <- compileReserved(schema)
+      _ = messageBuilder.reserved(reserved)
+      requiredFields = schema.required.map(_.value).toSet
+      valid <- schema.properties.toVector
+        .traverse[Result, Either[ExitCode, Unit]] {
+          case (fieldName, schema) =>
+            val required = requiredFields.contains(fieldName.value)
+            compileField(messageBuilder, fieldName, api, schema, schema.extensions, required, resolver).attempt
+        }
+        .map(_.forall(_.isRight))
+    } yield valid
 
   def compileField(
     builder: MessageBuilder,
