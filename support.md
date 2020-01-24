@@ -140,11 +140,11 @@ Supported content types:
  - `application/json`: supports `array` of `$ref`, `$ref` in `schema`, `oneOf`, primitive types
  - `text/plain`: only `type`: `string` supports
  - `application/octet-stream`: only `type`: `string` and `format`: `binary` supports
+ - inline object definitions in `schema`
 
 Not supported:
  - `$ref` in `requestBody`
  - multiple content types
- - inline object definitions in `schema`
  
 #### responses:
 
@@ -178,11 +178,11 @@ Supported media types:
  - `application/json`: supports `array` of `$ref`, `$ref` in `schema`, `oneof`, primitive types
  - `text/plain`: only `type`: `string` supports
  - `application/octet-stream`: only `type`: `string` and `format`: `binary` supports
+ - inline object definitions in `schema`
  
 Not supported:
  - `$ref` in `response`
  - multiple content types
- - inline object definitions in `schema`
  
 ## components:
 
@@ -232,3 +232,6 @@ Properties supported:
  - `datetime` (compiles as `string`)
  - `$ref` to `#/components/schemas/{name}`
  - `$ref` to `external.yaml#/components/schemas/{name}`
+ 
+Not supports:
+ - inline object definitions in `schema`
