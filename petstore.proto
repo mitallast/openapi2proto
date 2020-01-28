@@ -1,7 +1,10 @@
 syntax = "proto3";
 
+package petstore;
+
 import "google/api/annotations.proto";
 import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
 
 enum PetStatus {
    AVAILABLE = 0;

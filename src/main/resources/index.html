@@ -134,7 +134,8 @@ textarea.console {
 
 <script id="example" type="application/yaml">
 openapi: 3.0.0
-# Added by API Auto Mocking Plugin
+x-proto-package: petstore
+x-proto-service: PetstoreService
 servers:
   - description: SwaggerHub API Auto Mocking
     url: https://virtserver.swaggerhub.com/LorenzHW/originalPetstore/1.0.0
@@ -152,8 +153,6 @@ info:
   license:
     name: Apache 2.0
     url: 'http://www.apache.org/licenses/LICENSE-2.0.html'
-  x-proto-package: petstore
-  x-proto-service: PetstoreService
 tags:
   - name: pet
     description: Everything about your Pets
@@ -174,6 +173,8 @@ paths:
         - pet
       summary: Add a new pet to the store
       operationId: addPet
+      x-proto-request: AddPetRequestCustom
+      x-proto-response: AddPetResponseCustom
       responses:
         '405':
           description: Invalid input
@@ -715,6 +716,41 @@ components:
             - $ref: '#/components/schemas/Pet'
             - $ref: '#/components/schemas/OrderStatus'
             - $ref: '#/components/schemas/Category'
+        testIntegers:
+          oneOf:
+            - type: integer
+              format: int32
+              x-proto-field: test_v32
+              x-proto-format: varint
+            - type: integer
+              format: int32
+              x-proto-field: test_f32
+              x-proto-format: fixed
+            - type: integer
+              format: int64
+              x-proto-field: test_v64
+              x-proto-format: varint
+            - type: integer
+              format: int64
+              x-proto-field: test_f64
+              x-proto-format: fixed
+        testDates:
+          oneOf:
+            - type: string
+              format: date-time
+              x-proto-field: unix_seconds
+              x-proto-format: unix-time
+              description: in seconds
+            - type: string
+              format: date-time
+              x-proto-field: unix_millis
+              x-proto-format: unix-time-millis
+              description: in millis
+            - type: string
+              format: date-time
+              x-proto-field: proto_timestamp
+              x-proto-format: timestamp
+              description: using protobuf built-in timestamp
     PetStatus:
       type: string
       enum:
@@ -1112,6 +1148,8 @@ components:
     "string",
     "int64",
     "int32",
+    "fixed32",
+    "fixed64",
     "boolean",
     "float",
     "double",

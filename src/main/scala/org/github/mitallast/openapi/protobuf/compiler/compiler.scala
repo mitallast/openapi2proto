@@ -6,7 +6,7 @@ import cats.data._
 import cats.effect.ExitCode
 import cats.implicits._
 import org.github.mitallast.openapi.protobuf.common._
-import org.github.mitallast.openapi.protobuf.parser._
+import org.github.mitallast.openapi.protobuf.parser.{Scalar, _}
 import org.github.mitallast.openapi.protobuf.model._
 import org.yaml.snakeyaml.nodes.{Node, ScalarNode, SequenceNode}
 
@@ -149,6 +149,7 @@ object ProtoCompiler {
       protoFile = ProtoFile.builder(packageName)
       _ = protoFile += ImportStatement("google/api/annotations.proto")
       _ = protoFile += ImportStatement("google/protobuf/wrappers.proto")
+      _ = protoFile += ImportStatement("google/protobuf/timestamp.proto")
       componentsValid <- compileComponents(protoFile, api, resolver)
       serviceValid <- compileService(protoFile, api, resolver)
       resolvedValid <- compileResolved(protoFile, resolver)
@@ -304,7 +305,7 @@ object ProtoCompiler {
             id <- compileIdentifier(formatted)
             value = enumBuilder.nextValueNum
             _ <- require(!enumBuilder.contains(value), constant.node, s"Value $value already used")
-            _ = enumBuilder += EnumValue(id, enumBuilder.nextValueNum, Vector.empty)
+            _ = enumBuilder += EnumValue(id, value, Vector.empty)
           } yield ()).attempt
         }
         .map(_.forall(_.isRight))
@@ -356,10 +357,21 @@ object ProtoCompiler {
     for {
       _ <- require(op.operationId.isDefined, op.node, "require operationId")
       operationId = op.operationId.get
-      requestType <- compileTypeName(operationId.map(_.capitalize + "Request"))
+
+      xRequestType <- compileExtensionString(op.extensions, "x-proto-request")
+      requestType <- xRequestType match {
+        case Some(typeName) => compileTypeName(typeName)
+        case None           => compileTypeName(operationId.map(_.capitalize + "Request"))
+      }
       _ <- require(!protoFile.contains(requestType), operationId.node, s"$requestType already defined")
-      responseType <- compileTypeName(operationId.map(_.capitalize + "Response"))
+
+      xResponseType <- compileExtensionString(op.extensions, "x-proto-response")
+      responseType <- xResponseType match {
+        case Some(typeName) => compileTypeName(typeName)
+        case None           => compileTypeName(operationId.map(_.capitalize + "Response"))
+      }
       _ <- require(!protoFile.contains(responseType), operationId.node, s"$responseType already defined")
+
       operationId <- compileIdentifier(operationId)
       http = RpcOption.builder(FullIdentifier.http)
       _ = http += OptionStatement(Identifier(method.toString.toLowerCase), path.value)
@@ -644,16 +656,17 @@ object ProtoCompiler {
                   case ref: Reference         => compileComponentRef(api, ref, resolver)
                   case schema                 => error(schema.node, "schema is not supported at oneOf level")
                 }
-                fieldName <- fieldType match {
+                fieldName = fieldType match {
                   case Identifier(value) =>
-                    compileIdentifier(Scalar(schema.node, util.camelCaseToUnderscore(value)))
+                    Scalar(schema.node, util.camelCaseToUnderscore(value))
                   case FullIdentifier(value) =>
                     val typeName = util.extractIdentifier(value)
                     val id = util.camelCaseToUnderscore(typeName)
-                    compileIdentifier(Scalar(schema.node, id))
+                    Scalar(schema.node, id)
                 }
-                fieldNum <- compileFieldNum(builder, ScalarMap.empty)
-                _ = oneOf += OneOfField(fieldType, fieldName, fieldNum, Vector.empty)
+                fieldId <- compileFieldIdentifier(schema.extensions, fieldName)
+                fieldNum <- compileFieldNum(builder, schema.extensions)
+                _ = oneOf += OneOfField(fieldType, fieldId, fieldNum, Vector.empty)
               } yield ()).attempt
             }
             .map(_.forall(_.isRight))
@@ -694,14 +707,24 @@ object ProtoCompiler {
     for {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
-      format <- (required, schema.format) match {
-        case (true, Some(FormatType.INTEGER32_FORMAT))  => pure(Identifier.int32)
-        case (true, Some(FormatType.INTEGER64_FORMAT))  => pure(Identifier.int64)
-        case (true, None)                               => pure(Identifier.int64)
-        case (false, Some(FormatType.INTEGER32_FORMAT)) => pure(FullIdentifier.int32)
-        case (false, Some(FormatType.INTEGER64_FORMAT)) => pure(FullIdentifier.int64)
-        case (false, None)                              => pure(FullIdentifier.int64)
-        case (_, Some(format))                          => error(schema.node, s"unexpected format: $format")
+      protoFormat <- compileExtensionString(schema.extensions, "x-proto-format")
+      isFixed <- protoFormat.map(_.value) match {
+        case Some("fixed")  => pure(true)
+        case Some("varint") => pure(false)
+        case Some(_)        => error(protoFormat.get.node, "unexpected int format")
+        case None           => pure(false)
+      }
+      format <- (required, schema.format, isFixed) match {
+        case (true, Some(FormatType.INTEGER32_FORMAT), false)  => pure(Identifier.int32)
+        case (true, Some(FormatType.INTEGER32_FORMAT), true)   => pure(Identifier.fixed32)
+        case (true, Some(FormatType.INTEGER64_FORMAT), false)  => pure(Identifier.int64)
+        case (true, Some(FormatType.INTEGER64_FORMAT), true)   => pure(Identifier.fixed64)
+        case (true, None, false)                               => pure(Identifier.int64)
+        case (true, None, true)                                => pure(Identifier.fixed64)
+        case (false, Some(FormatType.INTEGER32_FORMAT), false) => pure(FullIdentifier.int32)
+        case (false, Some(FormatType.INTEGER64_FORMAT), false) => pure(FullIdentifier.int64)
+        case (false, None, false)                              => pure(FullIdentifier.int64)
+        case (_, Some(format), _)                              => error(schema.node, s"unexpected format: $format")
       }
     } yield format
 
@@ -741,9 +764,15 @@ object ProtoCompiler {
     for {
       _ <- requireNotRef(schema)
       _ <- requireNotEnum(schema)
-    } yield
-      if (required) Identifier.string
-      else FullIdentifier.string
+      format <- compileExtensionString(schema.extensions, "x-proto-format")
+      id <- format.map(_.value) match {
+        case Some("unix-time")        => pure(Identifier.fixed64)
+        case Some("unix-time-millis") => pure(Identifier.fixed64)
+        case Some("timestamp")        => pure(FullIdentifier.timestamp)
+        case Some(_)                  => error(format.get.node, "unexpected date format")
+        case None                     => if (required) pure(Identifier.string) else pure(FullIdentifier.string)
+      }
+    } yield id
 
   def compileBoolean(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {

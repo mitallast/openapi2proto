@@ -5,13 +5,13 @@ Not supported:
  - `minimum` in parameters and object fields
  - `maximum` in parameters and object fields
 
-## info:
-
 Supports: 
  - `x-proto-package`: custom protobuf package
  - fallback generate protobuf package from OpenAPI file path
  - `x-proto-service`: custom protobuf gRPC service name
  - fallback generate gRPC service name from title
+
+## info:
  
 Ignore:
  - `description`
@@ -36,6 +36,8 @@ Requirements:
 Supports:
  - all http methods supported by OpenAPI
  - path parameters like `/pet/{petId}:`
+ - `x-proto-request` to override request message id
+ - `x-proto-response` to override response message id
 
 ### request:
 
@@ -86,6 +88,13 @@ Supports:
 - `$ref` to `external.yaml#/components/schemas/{name}`
 - `array`
 - `oneOf`
+
+`integer` supports `x-proto-format` with values `fixed` or `varint`.
+
+`date-time` supports `x-proto-format` with values:
+- `unix-time` as unix timestamp in seconds, represented as `fixed64`
+- `unix-time-millis` as unix timestamp in millis, represented as `fixed64`
+- `timestamp` represented as protobuf `google.protobuf.Timestamp`
 
 Array items supported:
 - `integer` with format `int64` or `int32`

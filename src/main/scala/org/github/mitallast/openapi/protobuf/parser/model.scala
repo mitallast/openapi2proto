@@ -237,7 +237,8 @@ final case class Operation(
   responses: ApiResponses,
   callbacks: ScalarMap[String, Callback],
   deprecated: Option[Scalar[Boolean]],
-  security: Vector[SecurityRequirement]
+  security: Vector[SecurityRequirement],
+  extensions: ScalarMap[String, Node]
 )
 
 final case class RequestBody(

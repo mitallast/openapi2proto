@@ -424,7 +424,8 @@ object OpenAPIParser {
       responses = responses,
       callbacks = callbacks,
       deprecated = deprecated,
-      security = security
+      security = security,
+      extensions = operationNode.extensions
     )
 
   def parseRequestBody(requestNode: ObjectNode): Result[RequestBody] =

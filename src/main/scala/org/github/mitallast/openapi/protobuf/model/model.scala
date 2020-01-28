@@ -20,6 +20,8 @@ object Identifier {
   lazy val bytes: Identifier = Identifier("bytes")
   lazy val int32: Identifier = Identifier("int32")
   lazy val int64: Identifier = Identifier("int64")
+  lazy val fixed32: Identifier = Identifier("fixed32")
+  lazy val fixed64: Identifier = Identifier("fixed64")
   lazy val double: Identifier = Identifier("double")
   lazy val float: Identifier = Identifier("float")
   lazy val bool: Identifier = Identifier("bool")
@@ -34,6 +36,7 @@ object FullIdentifier {
   lazy val bool: FullIdentifier = FullIdentifier("google.protobuf.BoolValue")
   lazy val empty: FullIdentifier = FullIdentifier("google.protobuf.Empty")
   lazy val http: FullIdentifier = FullIdentifier("google.api.http")
+  lazy val timestamp: FullIdentifier = FullIdentifier("google.protobuf.Timestamp")
 }
 final case class FullIdentifier(value: String) extends TypeIdentifier
 
