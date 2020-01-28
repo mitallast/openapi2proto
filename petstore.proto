@@ -6,24 +6,39 @@ import "google/api/annotations.proto";
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/timestamp.proto";
 
-enum PetStatus {
-   AVAILABLE = 0;
-   PENDING = 1;
-   SOLD = 2;
-}
-
-enum OrderStatus {
-   PLACED = 0;
-   APPROVED = 1;
-   DELIVERED = 2;
-}
-
 message TestMessage {
    oneof test2 {
-      PetStatus pet_status = 1;
+      PetStatusWrapper.PetStatus pet_status = 1;
       Pet pet = 2;
-      OrderStatus order_status = 3;
+      OrderStatus.OrderStatus order_status = 3;
       Category category = 4;
+   }
+   oneof test_integers {
+      int32 test_v32 = 5;
+      fixed32 test_f32 = 6;
+      int64 test_v64 = 7;
+      fixed64 test_f64 = 8;
+   }
+   oneof test_dates {
+      fixed64 unix_seconds = 9;
+      fixed64 unix_millis = 10;
+      google.protobuf.Timestamp proto_timestamp = 11;
+   }
+}
+
+message PetStatusWrapper {
+   enum PetStatus {
+      AVAILABLE = 0;
+      PENDING = 1;
+      SOLD = 2;
+   }
+}
+
+message OrderStatus {
+   enum OrderStatus {
+      PLACED = 0;
+      APPROVED = 1;
+      DELIVERED = 2;
    }
 }
 
@@ -34,7 +49,7 @@ message Order {
    google.protobuf.Int64Value pet_id = 3;
    google.protobuf.Int32Value quantity = 6;
    google.protobuf.StringValue ship_date = 7;
-   OrderStatus status = 8;
+   OrderStatus.OrderStatus status = 8;
    google.protobuf.BoolValue complete = 9;
 }
 
@@ -65,7 +80,7 @@ message Pet {
    string name = 3;
    repeated string photo_urls = 4;
    repeated Tag tags = 5;
-   PetStatus status = 6;
+   PetStatusWrapper.PetStatus status = 6;
 }
 
 message ApiResponse {
@@ -82,15 +97,15 @@ message UpdatePetRequest {
 message UpdatePetResponse {
 }
 
-message AddPetRequest {
+message AddPetRequestCustom {
    Pet request_body = 1;
 }
 
-message AddPetResponse {
+message AddPetResponseCustom {
 }
 
 message FindPetsByStatusRequest {
-   repeated PetStatus status = 1;
+   repeated PetStatusWrapper.PetStatus status = 1;
 }
 
 message FindPetsByStatusResponse {
@@ -213,13 +228,13 @@ message DeleteUserResponse {
 }
 
 
-service SwaggerPetstoreService {
+service PetstoreService {
 
    rpc updatePet (UpdatePetRequest) returns (UpdatePetResponse) {
       option (google.api.http) = { put: "/pet" body: "pet" };
    }
 
-   rpc addPet (AddPetRequest) returns (AddPetResponse) {
+   rpc addPet (AddPetRequestCustom) returns (AddPetResponseCustom) {
       option (google.api.http) = { post: "/pet" body: "request_body" };
    }
 

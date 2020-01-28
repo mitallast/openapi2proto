@@ -1,5 +1,6 @@
 openapi: 3.0.0
-# Added by API Auto Mocking Plugin
+x-proto-package: petstore
+x-proto-service: PetstoreService
 servers:
   - description: SwaggerHub API Auto Mocking
     url: https://virtserver.swaggerhub.com/LorenzHW/originalPetstore/1.0.0
@@ -17,8 +18,6 @@ info:
   license:
     name: Apache 2.0
     url: 'http://www.apache.org/licenses/LICENSE-2.0.html'
-  x-proto-package: petstore
-  x-proto-service: PetstoreService
 tags:
   - name: pet
     description: Everything about your Pets
@@ -39,15 +38,17 @@ paths:
         - pet
       summary: Add a new pet to the store
       operationId: addPet
+      x-proto-request: AddPetRequestCustom
+      x-proto-response: AddPetResponseCustom
       responses:
         '405':
           description: Invalid input
-#      security:
-#        - petstore_auth:
-#            - 'write:pets'
-#            - 'read:pets'
+      #      security:
+      #        - petstore_auth:
+      #            - 'write:pets'
+      #            - 'read:pets'
       requestBody:
-#        $ref: '#/components/requestBodies/Pet'
+        #        $ref: '#/components/requestBodies/Pet'
         content:
           application/json:
             schema:
@@ -64,10 +65,10 @@ paths:
           description: Pet not found
         '405':
           description: Validation exception
-#      security:
-#        - petstore_auth:
-#            - 'write:pets'
-#            - 'read:pets'
+      #      security:
+      #        - petstore_auth:
+      #            - 'write:pets'
+      #            - 'read:pets'
       parameters:
         - name: tags
           in: query
@@ -79,7 +80,7 @@ paths:
             items:
               type: string
       requestBody:
-#        $ref: '#/components/requestBodies/Pet'
+        #        $ref: '#/components/requestBodies/Pet'
         content:
           application/json:
             x-proto-field: pet
@@ -112,17 +113,17 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Pet'
-#            application/xml:
-#              schema:
-#                type: array
-#                items:
-#                  $ref: '#/components/schemas/Pet'
+        #            application/xml:
+        #              schema:
+        #                type: array
+        #                items:
+        #                  $ref: '#/components/schemas/Pet'
         '400':
           description: Invalid status value
-#      security:
-#        - petstore_auth:
-#            - 'write:pets'
-#            - 'read:pets'
+  #      security:
+  #        - petstore_auth:
+  #            - 'write:pets'
+  #            - 'read:pets'
   /pet/findByTags:
     get:
       tags:
@@ -152,17 +153,17 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Pet'
-#            application/xml:
-#              schema:
-#                type: array
-#                items:
-#                  $ref: '#/components/schemas/Pet'
+        #            application/xml:
+        #              schema:
+        #                type: array
+        #                items:
+        #                  $ref: '#/components/schemas/Pet'
         '400':
           description: Invalid tag value
-#      security:
-#        - petstore_auth:
-#            - 'write:pets'
-#            - 'read:pets'
+      #      security:
+      #        - petstore_auth:
+      #            - 'write:pets'
+      #            - 'read:pets'
       deprecated: true
   '/pet/{petId}':
     get:
@@ -187,47 +188,47 @@ paths:
               x-proto-field: pet
               schema:
                 $ref: '#/components/schemas/Pet'
-#            application/xml:
-#              schema:
-#                $ref: '#/components/schemas/Pet'
+        #            application/xml:
+        #              schema:
+        #                $ref: '#/components/schemas/Pet'
         '400':
           description: Invalid ID supplied
         '404':
           description: Pet not found
-#      security:
-#        - api_key: []
-#    post:
-#      tags:
-#        - pet
-#      summary: Updates a pet in the store with form data
-#      operationId: updatePetWithForm
-#      parameters:
-#        - name: petId
-#          in: path
-#          description: ID of pet that needs to be updated
-#          required: true
-#          schema:
-#            type: integer
-#            format: int64
-#      responses:
-#        '405':
-#          description: Invalid input
-#      security:
-#        - petstore_auth:
-#            - 'write:pets'
-#            - 'read:pets'
-#      requestBody:
-#        content:
-#          application/x-www-form-urlencoded:
-#            schema:
-#              type: object
-#              properties:
-#                name:
-#                  description: Updated name of the pet
-#                  type: string
-#                status:
-#                  description: Updated status of the pet
-#                  type: string
+    #      security:
+    #        - api_key: []
+    #    post:
+    #      tags:
+    #        - pet
+    #      summary: Updates a pet in the store with form data
+    #      operationId: updatePetWithForm
+    #      parameters:
+    #        - name: petId
+    #          in: path
+    #          description: ID of pet that needs to be updated
+    #          required: true
+    #          schema:
+    #            type: integer
+    #            format: int64
+    #      responses:
+    #        '405':
+    #          description: Invalid input
+    #      security:
+    #        - petstore_auth:
+    #            - 'write:pets'
+    #            - 'read:pets'
+    #      requestBody:
+    #        content:
+    #          application/x-www-form-urlencoded:
+    #            schema:
+    #              type: object
+    #              properties:
+    #                name:
+    #                  description: Updated name of the pet
+    #                  type: string
+    #                status:
+    #                  description: Updated status of the pet
+    #                  type: string
     delete:
       tags:
         - pet
@@ -251,10 +252,10 @@ paths:
           description: Invalid ID supplied
         '404':
           description: Pet not found
-#      security:
-#        - petstore_auth:
-#            - 'write:pets'
-#            - 'read:pets'
+  #      security:
+  #        - petstore_auth:
+  #            - 'write:pets'
+  #            - 'read:pets'
   '/pet/{petId}/uploadImage':
     post:
       tags:
@@ -277,35 +278,35 @@ paths:
               x-proto-field: response
               schema:
                 $ref: '#/components/schemas/ApiResponse'
-#      security:
-#        - petstore_auth:
-#            - 'write:pets'
-#            - 'read:pets'
+      #      security:
+      #        - petstore_auth:
+      #            - 'write:pets'
+      #            - 'read:pets'
       requestBody:
         content:
           application/octet-stream:
             schema:
               type: string
               format: binary
-#  /store/inventory:
-#    get:
-#      tags:
-#        - store
-#      summary: Returns pet inventories by status
-#      description: Returns a map of status codes to quantities
-#      operationId: getInventory
-#      responses:
-#        '200':
-#          description: successful operation
-#          content:
-#            application/json:
-#              schema:
-#                type: object
-#                additionalProperties:
-#                  type: integer
-#                  format: int32
-#      security:
-#        - api_key: []
+  #  /store/inventory:
+  #    get:
+  #      tags:
+  #        - store
+  #      summary: Returns pet inventories by status
+  #      description: Returns a map of status codes to quantities
+  #      operationId: getInventory
+  #      responses:
+  #        '200':
+  #          description: successful operation
+  #          content:
+  #            application/json:
+  #              schema:
+  #                type: object
+  #                additionalProperties:
+  #                  type: integer
+  #                  format: int32
+  #      security:
+  #        - api_key: []
   /store/order:
     post:
       tags:
@@ -320,9 +321,9 @@ paths:
               x-proto-field: order
               schema:
                 $ref: '#/components/schemas/Order'
-#            application/xml:
-#              schema:
-#                $ref: '#/components/schemas/Order'
+        #            application/xml:
+        #              schema:
+        #                $ref: '#/components/schemas/Order'
         '400':
           description: Invalid Order
       requestBody:
@@ -359,9 +360,9 @@ paths:
               x-proto-field: order
               schema:
                 $ref: '#/components/schemas/Order'
-#            application/xml:
-#              schema:
-#                $ref: '#/components/schemas/Order'
+        #            application/xml:
+        #              schema:
+        #                $ref: '#/components/schemas/Order'
         '400':
           description: Invalid ID supplied
         '404':
@@ -416,7 +417,7 @@ paths:
         default:
           description: successful operation
       requestBody:
-#        $ref: '#/components/requestBodies/UserArray'
+        #        $ref: '#/components/requestBodies/UserArray'
         content:
           application/json:
             schema:
@@ -461,28 +462,28 @@ paths:
       responses:
         '200':
           description: successful operation
-#          headers:
-#            X-Rate-Limit:
-#              description: calls per hour allowed by the user
-#              schema:
-#                type: integer
-#                format: int32
-#            X-Expires-After:
-#              description: date in UTC when token expires
-#              schema:
-#                type: string
-#                format: date-time
+          #          headers:
+          #            X-Rate-Limit:
+          #              description: calls per hour allowed by the user
+          #              schema:
+          #                type: integer
+          #                format: int32
+          #            X-Expires-After:
+          #              description: date in UTC when token expires
+          #              schema:
+          #                type: string
+          #                format: date-time
           content:
             text/plain:
               x-proto-field: info
               schema:
                 type: string
-#            application/json:
-#              schema:
-#                type: string
-#            application/xml:
-#              schema:
-#                type: string
+        #            application/json:
+        #              schema:
+        #                type: string
+        #            application/xml:
+        #              schema:
+        #                type: string
         '400':
           description: Invalid username/password supplied
   /user/logout:
@@ -515,9 +516,9 @@ paths:
               x-proto-field: user
               schema:
                 $ref: '#/components/schemas/User'
-#            application/xml:
-#              schema:
-#                $ref: '#/components/schemas/User'
+        #            application/xml:
+        #              schema:
+        #                $ref: '#/components/schemas/User'
         '400':
           description: Invalid username supplied
         '404':
@@ -580,8 +581,44 @@ components:
             - $ref: '#/components/schemas/Pet'
             - $ref: '#/components/schemas/OrderStatus'
             - $ref: '#/components/schemas/Category'
+        testIntegers:
+          oneOf:
+            - type: integer
+              format: int32
+              x-proto-field: test_v32
+              x-proto-format: varint
+            - type: integer
+              format: int32
+              x-proto-field: test_f32
+              x-proto-format: fixed
+            - type: integer
+              format: int64
+              x-proto-field: test_v64
+              x-proto-format: varint
+            - type: integer
+              format: int64
+              x-proto-field: test_f64
+              x-proto-format: fixed
+        testDates:
+          oneOf:
+            - type: string
+              format: date-time
+              x-proto-field: unix_seconds
+              x-proto-format: unix-time
+              description: in seconds
+            - type: string
+              format: date-time
+              x-proto-field: unix_millis
+              x-proto-format: unix-time-millis
+              description: in millis
+            - type: string
+              format: date-time
+              x-proto-field: proto_timestamp
+              x-proto-format: timestamp
+              description: using protobuf built-in timestamp
     PetStatus:
       type: string
+      x-proto-wrapper: PetStatusWrapper
       enum:
         - available
         - pending

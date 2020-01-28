@@ -37,6 +37,10 @@ object FullIdentifier {
   lazy val empty: FullIdentifier = FullIdentifier("google.protobuf.Empty")
   lazy val http: FullIdentifier = FullIdentifier("google.api.http")
   lazy val timestamp: FullIdentifier = FullIdentifier("google.protobuf.Timestamp")
+
+  def apply(value: String): FullIdentifier = new FullIdentifier(value)
+  def apply(wrapper: Identifier, nested: Identifier): FullIdentifier =
+    new FullIdentifier(s"${wrapper.value}.${nested.value}")
 }
 final case class FullIdentifier(value: String) extends TypeIdentifier
 
@@ -57,7 +61,6 @@ final case class ProtoFile(
   packageName: FullIdentifier,
   options: Vector[OptionStatement],
   imports: Vector[ImportStatement],
-  enums: Vector[Enum],
   messages: Vector[Message],
   services: Vector[Service]
 )
@@ -69,7 +72,6 @@ final class ProtoFileBuilder(
 ) {
   private val options = Vector.newBuilder[OptionStatement]
   private val imports = Vector.newBuilder[ImportStatement]
-  private val enums = Vector.newBuilder[Enum]
   private val messages = Vector.newBuilder[Message]
   private val services = Vector.newBuilder[Service]
 
@@ -83,10 +85,7 @@ final class ProtoFileBuilder(
     imports += importStatement
     this
   }
-  def +=(enum: Enum): ProtoFileBuilder = {
-    enums += enum
-    this
-  }
+
   def contains(id: Identifier): Boolean = registeredMessages.contains(id)
 
   def +=(message: Message): ProtoFileBuilder = {
@@ -101,16 +100,7 @@ final class ProtoFileBuilder(
   }
 
   def build: ProtoFile =
-    new ProtoFile(
-      syntax,
-      path,
-      packageName,
-      options.result(),
-      imports.result(),
-      enums.result(),
-      messages.result(),
-      services.result()
-    )
+    new ProtoFile(syntax, path, packageName, options.result(), imports.result(), messages.result(), services.result())
 }
 
 object ImportStatement {
@@ -165,6 +155,7 @@ final class MessageBuilder(private val messageName: Identifier) {
   private val options = Vector.newBuilder[MessageOption]
   private val reserved = Vector.newBuilder[Int]
   private val fields = Vector.newBuilder[MessageField]
+  private val enums = Vector.newBuilder[Enum]
 
   private val used = mutable.Set.empty[Int]
   private val counter = new AtomicInteger()
@@ -203,7 +194,15 @@ final class MessageBuilder(private val messageName: Identifier) {
     this
   }
 
-  def build: Message = Message(messageName, options.result(), reserved.result(), fields.result())
+  def +=(enum: Enum): Unit = enums += enum
+
+  def build: Message = Message(
+    messageName = messageName,
+    options = options.result(),
+    reserved = reserved.result(),
+    fields = fields.result(),
+    enums = enums.result()
+  )
 }
 
 object Message {
@@ -214,7 +213,8 @@ final case class Message(
   messageName: Identifier,
   options: Vector[MessageOption],
   reserved: Vector[Int],
-  fields: Vector[MessageField]
+  fields: Vector[MessageField],
+  enums: Vector[Enum]
 )
 
 final case class MessageOption(optionName: Identifier, value: ConstantValue)

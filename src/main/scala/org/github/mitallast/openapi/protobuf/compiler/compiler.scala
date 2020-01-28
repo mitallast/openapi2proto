@@ -289,6 +289,15 @@ object ProtoCompiler {
       _ = protoFile += messageBuilder.build
     } yield ()
 
+  def compileEnumWrapper(schema: SchemaNormal, enumId: Identifier): Result[Identifier] =
+    for {
+      xWrapper <- compileExtensionString(schema.extensions, "x-proto-wrapper")
+      wrapperId <- xWrapper match {
+        case Some(wrapperType) => compileTypeName(wrapperType)
+        case None              => pure(enumId)
+      }
+    } yield wrapperId
+
   def compileComponentEnum(protoFile: ProtoFileBuilder, typeName: Scalar[String], schema: SchemaNormal): Result[Unit] =
     for {
       _ <- requireNoFormat(schema)
@@ -309,7 +318,11 @@ object ProtoCompiler {
           } yield ()).attempt
         }
         .map(_.forall(_.isRight))
-      _ = protoFile += enumBuilder.build
+      wrapperId <- compileEnumWrapper(schema, enumId)
+      _ <- require(!protoFile.contains(wrapperId), typeName.node, s"$wrapperId already defined")
+      wrapperBuilder = Message.builder(wrapperId)
+      _ = wrapperBuilder += enumBuilder.build
+      _ = protoFile += wrapperBuilder.build
     } yield ()
 
   def compileServiceName(api: OpenAPI): Result[Identifier] =
@@ -789,7 +802,11 @@ object ProtoCompiler {
         case IntegerSchema(integer) => compileInteger(integer, required = true)
         case NumberSchema(number)   => compileNumber(number, required = true)
         case StringSchema(string)   => compileString(string, required = true)
-        case EnumSchema(_)          => compileTypeName(schema.$ref.id)
+        case EnumSchema(enumSchema) =>
+          for {
+            enumId <- compileTypeName(schema.$ref.id)
+            wrapperId <- compileEnumWrapper(enumSchema, enumId)
+          } yield FullIdentifier(wrapperId, enumId)
         case DateSchema(date)       => compileDate(date, required = true)
         case DateTimeSchema(date)   => compileDateTime(date, required = true)
         case BooleanSchema(boolean) => compileBoolean(boolean, required = true)

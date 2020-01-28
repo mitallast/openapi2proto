@@ -84,7 +84,7 @@ object instances {
   }
 
   implicit val EnumOptionWriter: Writer[EnumOption] = instance { (option, builder) =>
-    builder << offset << "option " << option.optionName << " = " << option.value << end << newline
+    builder << offset << offset << "option " << option.optionName << " = " << option.value << end << newline
   }
 
   implicit val EnumValueOptionWriter: Writer[EnumValueOption] = instance { (option, builder) =>
@@ -121,12 +121,6 @@ object instances {
 
     builder << file.options
     builder << file.imports
-    if (file.enums.nonEmpty) {
-      for (enum <- file.enums) {
-        builder << enum
-        builder << newline
-      }
-    }
     if (file.messages.nonEmpty) {
       for (message <- file.messages) {
         builder << message
@@ -148,16 +142,16 @@ object instances {
   }
 
   implicit val EnumWriter: Writer[Enum] = instance { (enum, builder) =>
-    builder << "enum " << enum.enumName << " {" << newline
+    builder << offset << "enum " << enum.enumName << " {" << newline
     builder << enum.options
     for (value <- enum.values) {
       builder << value
     }
-    builder << "}" << newline
+    builder << offset << "}" << newline
   }
 
   implicit val EnumValueWriter: Writer[EnumValue] = instance { (value, builder) =>
-    builder << offset << value.identifier << " = " << value.value
+    builder << offset << offset << value.identifier << " = " << value.value
     if (value.options.nonEmpty) {
       builder << " [ "
       for (option <- value.options) {
@@ -175,6 +169,16 @@ object instances {
       builder << newline
     }
     builder << message.options
+
+    if (message.enums.nonEmpty) {
+      for (enum <- message.enums) {
+        builder << enum
+      }
+      if (message.fields.nonEmpty) {
+        builder << newline
+      }
+    }
+
     for (field <- message.fields) {
       builder << field
     }
