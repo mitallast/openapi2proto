@@ -5,6 +5,10 @@ package petstore;
 import "google/api/annotations.proto";
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/timestamp.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.goproto_registration) = true;
+option (gogoproto.messagename_all) = true;
 
 message TestMessage {
    oneof test2 {

@@ -8,7 +8,7 @@ import cats.implicits._
 import org.github.mitallast.openapi.protobuf.common._
 import org.github.mitallast.openapi.protobuf.parser.{Scalar, _}
 import org.github.mitallast.openapi.protobuf.model._
-import org.yaml.snakeyaml.nodes.{Node, ScalarNode, SequenceNode}
+import org.yaml.snakeyaml.nodes.{MappingNode, Node, ScalarNode, SequenceNode}
 
 import scala.jdk.CollectionConverters._
 
@@ -138,6 +138,21 @@ object extractors {
         case _                                            => None
       }
   }
+
+  object BooleanScalar {
+    def unapply(scalar: ScalarNode): Option[Boolean] =
+      if (scalar.isPlain) scalar.getValue.toBooleanOption else None
+  }
+
+  object LongScalar {
+    def unapply(scalar: ScalarNode): Option[Long] =
+      if (scalar.isPlain) scalar.getValue.toLongOption else None
+  }
+
+  object DoubleScalar {
+    def unapply(scalar: ScalarNode): Option[Double] =
+      if (scalar.isPlain) scalar.getValue.toDoubleOption else None
+  }
 }
 
 object ProtoCompiler {
@@ -150,11 +165,71 @@ object ProtoCompiler {
       _ = protoFile += ImportStatement("google/api/annotations.proto")
       _ = protoFile += ImportStatement("google/protobuf/wrappers.proto")
       _ = protoFile += ImportStatement("google/protobuf/timestamp.proto")
+      importsValid <- compileImports(protoFile, api)
+      optionsValid <- compileOptions(protoFile, api)
       componentsValid <- compileComponents(protoFile, api, resolver)
       serviceValid <- compileService(protoFile, api, resolver)
       resolvedValid <- compileResolved(protoFile, resolver)
-      _ <- if (componentsValid && serviceValid && resolvedValid) unit else left
+      _ <- if (optionsValid && importsValid && componentsValid && serviceValid && resolvedValid) unit else left
     } yield protoFile.build
+
+  def compileImports(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
+    for {
+      imports <- compileExtensionStringSeq(api.extensions, "x-proto-import")
+      result <- imports
+        .traverse[Result, Unit] { importFile =>
+          for {
+            valid <- delay(lexical.validate(importFile.value, lexical.identifiers.protoPath))
+            _ <- require(valid, importFile.node, "not valid path")
+            _ = protoFile += ImportStatement(importFile.value)
+          } yield ()
+        }
+        .attempt
+    } yield result.isRight
+
+  def compileOptions(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
+    for {
+      options <- compileExtensionMap(api.extensions, "x-proto-option")
+      result <- options.entries
+        .traverse[Result, Unit] {
+          case (key, valueNode) =>
+            for {
+              optionId <- compileFullIdentifier(key.node, key.value)
+              scalar <- requireScalarNode(valueNode)
+              constant = scalar match {
+                case BooleanScalar(value) => BooleanValue(value)
+                case LongScalar(value)    => LongValue(value)
+                case DoubleScalar(value)  => DoubleValue(value)
+                case _                    => StringValue(scalar.getValue)
+              }
+              _ = protoFile += OptionStatement(optionId, constant)
+            } yield ()
+        }
+        .attempt
+    } yield result.isRight
+
+  def compileExtensionMap(ext: Extensions, key: String): Result[ScalarMap[String, Node]] =
+    (for {
+      value <- OptionT.fromOption[Result](ext.get(key))
+      fields <- value match {
+        case mappingNode: MappingNode =>
+          OptionT.liftF {
+            mappingNode.getValue.asScala.toVector
+              .traverse[Result, (Scalar[String], Node)] { tuple =>
+                for {
+                  scalar <- requireScalarNode(tuple.getKeyNode)
+                } yield (Scalar(scalar, scalar.getValue), tuple.getValueNode)
+              }
+          }
+        case _ => OptionT.liftF(error[Vector[(Scalar[String], Node)]](value, "expected object"))
+      }
+    } yield ScalarMap(fields)).value.map(_.getOrElse(ScalarMap.empty))
+
+  def requireScalarNode(node: Node): Result[ScalarNode] =
+    node match {
+      case s: ScalarNode => pure(s)
+      case _             => error(node, s"expected scalar, actual ${node.getTag}")
+    }
 
   def compileExtensionString(ext: Extensions, key: String): Result[Option[Scalar[String]]] =
     (for {

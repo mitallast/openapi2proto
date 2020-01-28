@@ -80,7 +80,12 @@ object instances {
   }
 
   implicit val OptionStatementWriter: Writer[OptionStatement] = instance { (option, builder) =>
-    builder << "option " << option.optionName << " = " << option.value << end << newline
+    builder << "option "
+    option.optionName match {
+      case Identifier(id)     => builder << id
+      case FullIdentifier(id) => builder << "(" << id << ")"
+    }
+    builder << " = " << option.value << end << newline
   }
 
   implicit val EnumOptionWriter: Writer[EnumOption] = instance { (option, builder) =>
@@ -119,8 +124,9 @@ object instances {
     builder << "package " << file.packageName << end << newline
     builder << newline
 
-    builder << file.options
     builder << file.imports
+    builder << file.options
+
     if (file.messages.nonEmpty) {
       for (message <- file.messages) {
         builder << message

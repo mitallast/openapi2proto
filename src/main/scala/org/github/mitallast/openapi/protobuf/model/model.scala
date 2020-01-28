@@ -335,17 +335,17 @@ object RpcOption {
 final case class RpcOption(identifier: FullIdentifier, options: Vector[OptionStatement])
 
 object OptionStatement {
-  def apply(identifier: Identifier, value: String): OptionStatement =
+  def apply(identifier: TypeIdentifier, value: String): OptionStatement =
     OptionStatement(identifier, StringValue(value))
-  def apply(identifier: Identifier, value: Long): OptionStatement =
+  def apply(identifier: TypeIdentifier, value: Long): OptionStatement =
     OptionStatement(identifier, LongValue(value))
-  def apply(identifier: Identifier, value: Double): OptionStatement =
+  def apply(identifier: TypeIdentifier, value: Double): OptionStatement =
     OptionStatement(identifier, DoubleValue(value))
-  def apply(identifier: Identifier, value: Boolean): OptionStatement =
+  def apply(identifier: TypeIdentifier, value: Boolean): OptionStatement =
     OptionStatement(identifier, BooleanValue(value))
 }
 
-final case class OptionStatement(optionName: Identifier, value: ConstantValue)
+final case class OptionStatement(optionName: TypeIdentifier, value: ConstantValue)
 
 object ConstantValue {
   def apply(value: String): ConstantValue = StringValue(value)

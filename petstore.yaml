@@ -1,6 +1,11 @@
 openapi: 3.0.0
 x-proto-package: petstore
 x-proto-service: PetstoreService
+x-proto-import:
+  - "github.com/gogo/protobuf/gogoproto/gogo.proto"
+x-proto-option:
+  "gogoproto.goproto_registration": true
+  "gogoproto.messagename_all": true
 servers:
   - description: SwaggerHub API Auto Mocking
     url: https://virtserver.swaggerhub.com/LorenzHW/originalPetstore/1.0.0
