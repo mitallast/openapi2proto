@@ -10,6 +10,8 @@ Supports:
  - fallback generate protobuf package from OpenAPI file path
  - `x-proto-service`: custom protobuf gRPC service name
  - fallback generate gRPC service name from title
+ - `x-proto-import` custom protobuf import, list of imports
+ - `x-proto-option` custom protobuf options, key-value map
 
 ## info:
  
