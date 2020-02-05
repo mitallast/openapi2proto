@@ -170,7 +170,7 @@ object ProtoCompiler {
       componentsValid <- compileComponents(protoFile, api, resolver)
       serviceValid <- compileService(protoFile, api, resolver)
       resolvedValid <- compileResolved(protoFile, resolver)
-      _ <- if (optionsValid && importsValid && componentsValid && serviceValid && resolvedValid) unit else left
+      _ <- if (importsValid && optionsValid && componentsValid && serviceValid && resolvedValid) unit else left
     } yield protoFile.build
 
   def compileImports(protoFile: ProtoFileBuilder, api: OpenAPI): Result[Boolean] =
@@ -291,7 +291,7 @@ object ProtoCompiler {
         } yield api.components.schemas(id)
       case ExternalReference(file, ComponentsReference(id)) =>
         for {
-          externalApi <- resolver.resolve(file)
+          externalApi <- resolver.resolve(api.filepath, file)
           schemas = externalApi.components.schemas
           _ <- require(schemas.contains(id), id.node, s"component schema $file $id does not exists")
         } yield schemas(id)
@@ -360,8 +360,8 @@ object ProtoCompiler {
             compileField(messageBuilder, fieldName, api, schema, schema.extensions, required, resolver).attempt
         }
         .map(_.forall(_.isRight))
-      _ <- if (valid) unit else left
       _ = protoFile += messageBuilder.build
+      _ <- if (valid) unit else left
     } yield ()
 
   def compileEnumWrapper(schema: SchemaNormal, enumId: Identifier): Result[Identifier] =
@@ -501,10 +501,11 @@ object ProtoCompiler {
         case None => pure(true)
         case Some(response) =>
           for {
-            _ <- if (response.content.isEmpty) pure(true)
+            valid <- if (response.content.isEmpty) pure(true)
             else
               compileResponseContent(http, responseBuilder, response, api, resolver).attempt
-          } yield true
+                .map(_.isRight)
+          } yield valid
       }
       _ = protoFile += responseBuilder.build
       _ <- if (validParams && validRequest && validResponse) unit else left

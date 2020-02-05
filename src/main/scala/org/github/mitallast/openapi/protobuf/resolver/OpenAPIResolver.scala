@@ -1,6 +1,7 @@
 package org.github.mitallast.openapi.protobuf.resolver
 
 import java.io.{File, FileReader}
+import java.nio.file.Path
 
 import cats.data._
 import cats.effect.{ExitCode, IO}
@@ -15,43 +16,51 @@ import scala.collection.concurrent
 
 trait OpenAPIResolver {
   def resolved(): Result[Vector[OpenAPI]]
-  def resolve(filepath: Scalar[String]): Result[OpenAPI]
+  def resolve(currentFile: Path, filepath: Scalar[String]): Result[OpenAPI]
 }
 
 object OpenAPIResolver {
-  def apply(files: Map[String, OpenAPI]): OpenAPIResolver = new FixedResolver(files)
+  def apply(files: Map[Path, OpenAPI]): OpenAPIResolver = new FixedResolver(files)
 
   def apply(): OpenAPIResolver = new FileResolver()
 
-  final class FixedResolver(files: Map[String, OpenAPI]) extends OpenAPIResolver {
+  final class FixedResolver(files: Map[Path, OpenAPI]) extends OpenAPIResolver {
 
     def resolved(): Result[Vector[OpenAPI]] = pure(files.values.toVector)
 
-    def resolve(filepath: Scalar[String]): Result[OpenAPI] =
+    def resolve(currentFile: Path, filepath: Scalar[String]): Result[OpenAPI] =
       for {
-        _ <- require(files.contains(filepath.value), filepath.node, "file not resolved")
-        api <- pure(files(filepath.value))
+        path <- delay(Path.of(filepath.value))
+        _ <- require(files.contains(path), filepath.node, "file not resolved")
+        api <- pure(files(path))
       } yield api
   }
 
   final class FileResolver extends OpenAPIResolver {
-    private val files = concurrent.TrieMap.empty[String, OpenAPI]
+    private val files = concurrent.TrieMap.empty[Path, OpenAPI]
 
     def resolved(): Result[Vector[OpenAPI]] = pure(files.values.toVector)
 
-    def resolve(filepath: Scalar[String]): Result[OpenAPI] =
+    def resolve(currentFile: Path, filepath: Scalar[String]): Result[OpenAPI] =
       for {
-        exists <- delay(files.contains(filepath.value))
-        api <- if (exists) pure(files(filepath.value)) else parse(filepath)
+        absolutePath <- resolvePath(currentFile, filepath)
+        exists <- delay(files.contains(absolutePath))
+        api <- if (exists) pure(files(absolutePath)) else parse(filepath, absolutePath)
       } yield api
 
-    def parse(filepath: Scalar[String]): Result[OpenAPI] =
+    private def resolvePath(currentFile: Path, filepath: Scalar[String]): Result[Path] =
       for {
-        file <- delay(new File(filepath.value))
-        _ <- require(file.exists(), filepath.node, "file not found")
+        path <- delay(Path.of(filepath.value))
+        _ <- require(!path.isAbsolute, filepath.node, "compiler error, must be relative path")
+      } yield currentFile.getParent.resolve(path)
+
+    private def parse(path: Scalar[String], filepath: Path): Result[OpenAPI] =
+      for {
+        file <- delay(filepath.toFile)
+        _ <- require(file.exists(), path.node, "file not found")
         reader <- delay(new FileReader(file))
-        api <- OpenAPIParser.parse(reader, filepath.value)
-        _ = files.put(filepath.value, api)
+        api <- OpenAPIParser.parse(reader, filepath)
+        _ = files.put(filepath, api)
       } yield api
   }
 }

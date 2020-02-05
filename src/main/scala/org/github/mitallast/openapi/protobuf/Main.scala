@@ -99,11 +99,10 @@ object Main extends IOApp {
 
   private def compile(filepath: Path): IO[ExitCode] =
     for {
-      filename <- IO(filepath.getFileName.toString)
       reader <- IO(new FileReader(filepath.toFile))
       resolver <- IO(OpenAPIResolver())
       (logging, result) <- (for {
-        api <- OpenAPIParser.parse(reader, filename)
+        api <- OpenAPIParser.parse(reader, filepath)
         protoFile <- ProtoCompiler.compile(api, filepath.toString, resolver)
       } yield protoFile).value.run
       exitCode <- IO {
@@ -143,7 +142,7 @@ object Main extends IOApp {
           val filename = "openapi.yaml"
           for {
             result <- (for {
-              api <- OpenAPIParser.parse(compile.source, filename)
+              api <- OpenAPIParser.parse(compile.source, Path.of(filename))
               external <- OpenAPIParser.parse(compile.external)
               protoFile <- ProtoCompiler.compile(api, filename, OpenAPIResolver(external))
             } yield protoFile).value.run
@@ -161,7 +160,7 @@ object Main extends IOApp {
         }
     }
 
-    val staticFiles = HttpRoutes.of[IO] {
+    val staticFiles: HttpRoutes[IO] = HttpRoutes.of[IO] {
       case req @ GET -> Root =>
         logger.info("requested /")
         StaticFile

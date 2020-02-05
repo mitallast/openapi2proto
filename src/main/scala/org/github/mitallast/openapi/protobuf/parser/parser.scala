@@ -1,6 +1,7 @@
 package org.github.mitallast.openapi.protobuf.parser
 
 import java.io.{FileReader, Reader, StringReader}
+import java.nio.file.Path
 
 import cats.data._
 import cats.implicits._
@@ -16,8 +17,9 @@ import scala.jdk.CollectionConverters._
 import scala.util.matching.Regex
 
 object NamedStreamReader {
-  def apply(filename: String): NamedStreamReader = apply(new FileReader(filename), filename)
-  def apply(reader: Reader, filename: String): NamedStreamReader = new NamedStreamReader(reader, filename)
+  def apply(filepath: Path): NamedStreamReader = apply(new FileReader(filepath.toString), filepath)
+  def apply(reader: Reader, filepath: Path): NamedStreamReader =
+    new NamedStreamReader(reader, filepath.getFileName.toString)
 }
 final class NamedStreamReader(reader: Reader, name: String) extends StreamReader(reader) {
   override def getMark: Mark = {
@@ -29,8 +31,9 @@ final class NamedStreamReader(reader: Reader, name: String) extends StreamReader
 
 object OpenAPIParser {
 
-  private val schemaRef: Regex = "^#/components/schemas/([a-zA-Z0-9_]+)$".r
-  private val externalRef: Regex = "^([a-z-A-Z0-9_\\.]+.ya?ml)#/components/schemas/([a-zA-Z0-9_]+)$".r
+  private val schemaRef: Regex = "^#\\/components\\/schemas\\/([a-zA-Z0-9_]+)$".r
+  private val externalRef: Regex =
+    "^((\\.\\.\\/|[a-z-A-Z0-9_\\.]+\\/)*[a-z-A-Z0-9_\\.]+.ya?ml)#\\/components\\/schemas\\/([a-zA-Z0-9_]+)$".r
 
   final case class ObjectNode(node: MappingNode, fields: ScalarMap[String, Node]) {
     def allowedFields(names: String*): Result[Unit] =
@@ -152,26 +155,27 @@ object OpenAPIParser {
     def extensions: ScalarMap[String, Node] = fields.filter(_._1.value.startsWith("x-"))
   }
 
-  def parse(sources: Map[String, String]): Result[Map[String, OpenAPI]] =
+  def parse(sources: Map[String, String]): Result[Map[Path, OpenAPI]] =
     sources.toVector
-      .traverse[Result, (String, OpenAPI)] {
+      .traverse[Result, (Path, OpenAPI)] {
         case (filename, source) =>
+          val filepath = Path.of(filename)
           for {
-            api <- parse(source, filename)
-          } yield (filename, api)
+            api <- parse(source, filepath)
+          } yield (filepath, api)
       }
       .map(_.toMap)
 
-  def parse(source: String, filename: String): Result[OpenAPI] = parse(new StringReader(source), filename)
+  def parse(source: String, filepath: Path): Result[OpenAPI] = parse(new StringReader(source), filepath)
 
-  def parse(reader: Reader, filename: String): Result[OpenAPI] = {
-    val stream = NamedStreamReader(reader, filename)
+  def parse(reader: Reader, filepath: Path): Result[OpenAPI] = {
+    val stream = NamedStreamReader(reader, filepath)
     try {
       val parser = new ParserImpl(stream)
       val resolver = new Resolver()
       val composer = new Composer(parser, resolver)
       val node = composer.getSingleNode
-      parse(node)
+      parse(node, filepath)
     } catch {
       case e: MarkedYAMLException => error(e.getProblemMark, e.getMessage)
       case e: YAMLException       => error(stream.getMark, e.getMessage)
@@ -180,7 +184,7 @@ object OpenAPIParser {
     }
   }
 
-  def parse(node: Node): Result[OpenAPI] =
+  def parse(node: Node, filepath: Path): Result[OpenAPI] =
     for {
       root <- requireObjectNode(node)
       _ <- root.allowedFields("openapi", "info", "externalDocs", "servers", "security", "tags", "paths", "components")
@@ -193,6 +197,7 @@ object OpenAPIParser {
       paths <- parsePaths(root)
       components <- parseComponents(root)
     } yield OpenAPI(
+      filepath = filepath,
       node = root.node,
       openapi = openapi,
       info = info,
@@ -668,9 +673,10 @@ object OpenAPIParser {
 
   def parseRef($ref: Scalar[String]): Result[SchemaReference] =
     $ref.value match {
-      case schemaRef(id)         => pure(ComponentsReference($ref.map(_ => id)))
-      case externalRef(file, id) => pure(ExternalReference($ref.map(_ => file), ComponentsReference($ref.map(_ => id))))
-      case _                     => error($ref.node, s"invalid ref: ${$ref.value}")
+      case schemaRef(id) => pure(ComponentsReference($ref.map(_ => id)))
+      case externalRef(file, _, id) =>
+        pure(ExternalReference($ref.map(_ => file), ComponentsReference($ref.map(_ => id))))
+      case _ => error($ref.node, s"invalid ref: ${$ref.value}")
     }
 
   def parseSchemaNormal(schemaNode: ObjectNode): Result[Schema] =

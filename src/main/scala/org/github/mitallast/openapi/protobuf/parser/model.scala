@@ -1,5 +1,6 @@
 package org.github.mitallast.openapi.protobuf.parser
 
+import java.nio.file.Path
 import java.util.Objects
 
 import cats.Show
@@ -71,6 +72,7 @@ object implicits {
   implicit val showCallback: Show[Callback] = derived.semi.show[Callback]
   implicit val showParameter: Show[Parameter] = derived.semi.show[Parameter]
 
+  implicit val showPath: Show[Path] = Show.show(_.toString)
   implicit val showPaths: Show[Paths] = derived.semi.show[Paths]
   implicit val showComponents: Show[Components] = derived.semi.show[Components]
   implicit val showOpenAPI: Show[OpenAPI] = derived.semi.show[OpenAPI]
@@ -86,7 +88,8 @@ final class Scalar[V](val node: Node, val value: V) {
   def map[VV](f: V => VV): Scalar[VV] = new Scalar(node, f(value))
 
   override def hashCode(): Int = Objects.hash(value)
-  override def equals(obj: Any): Boolean = Objects.equals(obj, this)
+  override def equals(obj: Any): Boolean =
+    obj != null && obj.isInstanceOf[Scalar[V]] && Objects.equals(obj.asInstanceOf[Scalar[V]].value, value)
 
   override def toString: String = value.toString
 }
@@ -120,6 +123,7 @@ final class ScalarMap[K, V](private val values: Vector[(Scalar[K], V)]) {
 }
 
 final case class OpenAPI(
+  filepath: Path,
   node: MappingNode,
   openapi: Scalar[String],
   info: ApiInfo,
