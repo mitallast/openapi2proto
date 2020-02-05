@@ -45,9 +45,6 @@ object FullIdentifier {
 final case class FullIdentifier(value: String) extends TypeIdentifier
 
 object ProtoFile {
-  def builder(packageName: FullIdentifier): ProtoFileBuilder =
-    builder(ProtoPath(s"${packageName.value}.proto"), packageName)
-
   def builder(path: ProtoPath, packageName: FullIdentifier): ProtoFileBuilder =
     builder(ProtoSyntaxV3, path, packageName)
 

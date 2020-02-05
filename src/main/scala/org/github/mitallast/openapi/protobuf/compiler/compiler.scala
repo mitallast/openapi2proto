@@ -158,10 +158,11 @@ object extractors {
 object ProtoCompiler {
   import extractors._
 
-  def compile(api: OpenAPI, path: String, resolver: Resolver): Result[ProtoFile] =
+  def compile(api: OpenAPI, resolver: Resolver): Result[ProtoFile] =
     for {
-      packageName <- compilePackageName(api, path)
-      protoFile = ProtoFile.builder(packageName)
+      packageName <- compilePackageName(api)
+      protoPath <- compileProtoPath(api)
+      protoFile = ProtoFile.builder(protoPath, packageName)
       _ = protoFile += ImportStatement("google/api/annotations.proto")
       _ = protoFile += ImportStatement("google/protobuf/wrappers.proto")
       _ = protoFile += ImportStatement("google/protobuf/timestamp.proto")
@@ -257,7 +258,7 @@ object ProtoCompiler {
       })
     } yield values).value.map(_.getOrElse(Vector.empty))
 
-  def compilePackageName(api: OpenAPI, path: String): Result[FullIdentifier] =
+  def compilePackageName(api: OpenAPI): Result[FullIdentifier] =
     for {
       opt <- compileExtensionString(api.extensions, "x-proto-package")
       id <- opt match {
@@ -265,11 +266,21 @@ object ProtoCompiler {
         case None =>
           for {
             _ <- warning(api.node, "x-proto-package is not defined")
-            raw = util.cleanup(Paths.get(path).getFileName.toString.replaceAll("\\.[a-zA-Z]{3,5}$", ""))
+            raw = util.cleanup(api.filepath.getFileName.toString.replaceAll("\\.[a-zA-Z]{3,5}$", ""))
             id <- compileFullIdentifier(api.node, raw)
           } yield id
       }
     } yield id
+
+  def compileProtoPath(api: OpenAPI): Result[ProtoPath] =
+    for {
+      protoPath <- delay {
+        val parent = api.filepath.getParent
+        val filename = api.filepath.getFileName
+        val protoFilename = filename.toString.replaceAll("\\.ya?ml$", "") + ".proto"
+        parent.resolve(protoFilename).toString
+      }
+    } yield ProtoPath(protoPath)
 
   def compileReserved(schema: SchemaNormal): Result[Vector[Int]] =
     for {

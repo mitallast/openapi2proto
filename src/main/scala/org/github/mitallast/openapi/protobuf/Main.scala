@@ -103,7 +103,7 @@ object Main extends IOApp {
       resolver <- IO(OpenAPIResolver())
       (logging, result) <- (for {
         api <- OpenAPIParser.parse(reader, filepath)
-        protoFile <- ProtoCompiler.compile(api, filepath.toString, resolver)
+        protoFile <- ProtoCompiler.compile(api, resolver)
       } yield protoFile).value.run
       exitCode <- IO {
         val logger = getLogger("compiler")
@@ -139,12 +139,11 @@ object Main extends IOApp {
     val api = HttpRoutes.of[IO] {
       case request @ POST -> Root / "compile" =>
         request.decode[CompileRequest] { compile =>
-          val filename = "openapi.yaml"
           for {
             result <- (for {
-              api <- OpenAPIParser.parse(compile.source, Path.of(filename))
+              api <- OpenAPIParser.parse(compile.source, Path.of("openapi.yaml"))
               external <- OpenAPIParser.parse(compile.external)
-              protoFile <- ProtoCompiler.compile(api, filename, OpenAPIResolver(external))
+              protoFile <- ProtoCompiler.compile(api, OpenAPIResolver(external))
             } yield protoFile).value.run
             source <- blocker.delay[IO, CompileResponse] {
               result match {
