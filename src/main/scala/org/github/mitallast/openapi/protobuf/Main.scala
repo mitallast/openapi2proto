@@ -1,7 +1,7 @@
 package org.github.mitallast.openapi.protobuf
 
 import java.io.{File, FileReader}
-import java.nio.file.{Files, Path, Paths, StandardOpenOption}
+import java.nio.file.{Files, Path, StandardOpenOption}
 
 import cats.effect._
 import cats.implicits._
@@ -32,10 +32,10 @@ case object Server extends Command
 
 final case class Config(
   command: Command = Help,
-  filepath: Path = Paths.get("petstore.yaml"),
+  filepath: Path = Path.of("petstore.yaml"),
   port: Int = 8081,
   host: String = "localhost",
-  targetPath: Path = Paths.get("./")
+  targetPath: Path = Path.of("./")
 )
 
 final case class CompileRequest(source: String, external: Map[String, String])
@@ -48,7 +48,7 @@ object Main extends IOApp {
   private val blocker = Blocker.liftExecutionContext(ExecutionContext.global)
 
   private implicit val userDecoder: EntityDecoder[IO, CompileRequest] = jsonOf[IO, CompileRequest]
-  private implicit val pathRead: Read[Path] = Read.reads { Paths.get(_) }
+  private implicit val pathRead: Read[Path] = Read.reads { Path.of(_) }
 
   private val builder = OParser.builder[Config]
 

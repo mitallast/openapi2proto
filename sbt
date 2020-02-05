@@ -3,11 +3,7 @@
 # A more capable sbt runner, coincidentally also called sbt.
 # Author: Paul Phillips <paulp@improving.org>
 
-export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home
-
 set -o pipefail
-
-export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk/Contents/Home
 
 declare -r sbt_release_version="0.13.15"
 declare -r sbt_unreleased_version="0.13.15"

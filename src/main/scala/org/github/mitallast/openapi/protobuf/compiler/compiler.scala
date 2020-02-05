@@ -1,7 +1,5 @@
 package org.github.mitallast.openapi.protobuf.compiler
 
-import java.nio.file.Paths
-
 import cats.data._
 import cats.effect.ExitCode
 import cats.implicits._
