@@ -39,8 +39,15 @@ object FullIdentifier {
   lazy val timestamp: FullIdentifier = FullIdentifier("google.protobuf.Timestamp")
 
   def apply(value: String): FullIdentifier = new FullIdentifier(value)
+
   def apply(wrapper: Identifier, nested: Identifier): FullIdentifier =
     new FullIdentifier(s"${wrapper.value}.${nested.value}")
+
+  def apply(protoPackage: FullIdentifier, component: Identifier): FullIdentifier =
+    new FullIdentifier(s"${protoPackage.value}.${component.value}")
+
+  def apply(protoPackage: FullIdentifier, wrapper: Identifier, nested: Identifier): FullIdentifier =
+    new FullIdentifier(s"${protoPackage.value}.${wrapper.value}.${nested.value}")
 }
 final case class FullIdentifier(value: String) extends TypeIdentifier
 

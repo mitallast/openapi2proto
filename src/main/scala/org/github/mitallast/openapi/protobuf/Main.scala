@@ -34,7 +34,8 @@ final case class Config(
   command: Command = Help,
   filepath: Path = Paths.get("petstore.yaml"),
   port: Int = 8081,
-  host: String = "localhost"
+  host: String = "localhost",
+  targetPath: Path = Paths.get("./")
 )
 
 final case class CompileRequest(source: String, external: Map[String, String])
@@ -63,7 +64,11 @@ object Main extends IOApp {
           arg[Path]("<file>")
             .required()
             .action((path, c) => c.copy(filepath = path))
-            .text("openapi file in yaml format")
+            .text("openapi file in yaml format"),
+          opt[Path]("target-path")
+            .abbr("t")
+            .action((path, c) => c.copy(targetPath = path))
+            .text("output path")
         ),
       cmd("server")
         .action((_, c) => c.copy(command = Server))
@@ -86,7 +91,7 @@ object Main extends IOApp {
       case Some(config) =>
         config.command match {
           case Help    => help()
-          case Compile => compile(config.filepath)
+          case Compile => compile(config.filepath, config.targetPath)
           case Server  => server(config.port, config.host)
         }
       case _ => help()
@@ -97,7 +102,7 @@ object Main extends IOApp {
     ExitCode.Error
   }
 
-  private def compile(filepath: Path): IO[ExitCode] =
+  private def compile(filepath: Path, targetPath: Path): IO[ExitCode] =
     for {
       reader <- IO(new FileReader(filepath.toFile))
       resolver <- IO(OpenAPIResolver())
@@ -123,8 +128,15 @@ object Main extends IOApp {
           case Right(protoFile) =>
             val source = Writer.writeFile(protoFile)
             println(source)
+
+            val targetFile = if (targetPath.getFileName.endsWith(".proto")) {
+              targetPath
+            } else {
+              targetPath.resolve(protoFile.path.value)
+            }
+            targetFile.getParent.toFile.mkdirs()
             Files.write(
-              Paths.get(protoFile.path.value),
+              targetFile,
               source.getBytes("UTF-8"),
               StandardOpenOption.CREATE,
               StandardOpenOption.TRUNCATE_EXISTING

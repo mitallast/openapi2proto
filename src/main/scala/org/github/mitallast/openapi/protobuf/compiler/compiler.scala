@@ -294,21 +294,6 @@ object ProtoCompiler {
       }
     } yield reserved
 
-  def compileSchemaRef(api: OpenAPI, $ref: SchemaReference, resolver: Resolver): Result[Schema] =
-    $ref match {
-      case ComponentsReference(id) =>
-        for {
-          _ <- require(api.components.schemas.contains(id), id.node, s"component schema $id does not exists")
-        } yield api.components.schemas(id)
-      case ExternalReference(file, ComponentsReference(id)) =>
-        for {
-          externalApi <- resolver.resolve(api.filepath, file)
-          schemas = externalApi.components.schemas
-          _ <- require(schemas.contains(id), id.node, s"component schema $file $id does not exists")
-        } yield schemas(id)
-      case _ => error($ref.id.node, s"unsupported ref: ${$ref}")
-    }
-
   def compileFullIdentifier(node: Node, value: String): Result[FullIdentifier] =
     if (lexical.validate(value, lexical.identifiers.fullIdent)) {
       pure(FullIdentifier(value))
@@ -327,7 +312,10 @@ object ProtoCompiler {
       resolved <- resolver.resolved()
       valid <- resolved
         .traverse[Result, Boolean] { api =>
-          compileComponents(protoFile, api, resolver)
+          (for {
+            path <- compileProtoPath(api)
+            _ = protoFile += ImportStatement(path)
+          } yield ()).attempt.map(_.isRight)
         }
         .map { results =>
           results.forall(_ == true)
@@ -425,24 +413,27 @@ object ProtoCompiler {
     } yield id
 
   def compileService(protoFile: ProtoFileBuilder, api: OpenAPI, resolver: Resolver): Result[Boolean] =
-    for {
-      serviceName <- compileServiceName(api)
-      serviceBuilder = Service.builder(serviceName)
-      valid <- api.paths.values.toVector
-        .flatMap {
-          case (path, item) =>
-            item.operations.map {
-              case (method, op) =>
-                (path, method, op)
-            }
-        }
-        .traverse[Result, Either[ExitCode, Unit]] {
-          case (path, method, op) =>
-            compileRpc(protoFile, serviceBuilder, method, path, op, api, resolver).attempt
-        }
-        .map(_.forall(_.isRight))
-      _ = protoFile += serviceBuilder.build
-    } yield valid
+    if (api.paths.values.isEmpty)
+      pure(true)
+    else
+      for {
+        serviceName <- compileServiceName(api)
+        serviceBuilder = Service.builder(serviceName)
+        valid <- api.paths.values.toVector
+          .flatMap {
+            case (path, item) =>
+              item.operations.map {
+                case (method, op) =>
+                  (path, method, op)
+              }
+          }
+          .traverse[Result, Either[ExitCode, Unit]] {
+            case (path, method, op) =>
+              compileRpc(protoFile, serviceBuilder, method, path, op, api, resolver).attempt
+          }
+          .map(_.forall(_.isRight))
+        _ = protoFile += serviceBuilder.build
+      } yield valid
 
   def compileRpc(
     protoFile: ProtoFileBuilder,
@@ -884,22 +875,67 @@ object ProtoCompiler {
 
   def compileComponentRef(api: OpenAPI, schema: Reference, resolver: Resolver): Result[TypeIdentifier] =
     for {
-      refSchema <- compileSchemaRef(api, schema.$ref, resolver)
-      typeName: TypeIdentifier <- refSchema match {
-        case IntegerSchema(integer) => compileInteger(integer, required = true)
-        case NumberSchema(number)   => compileNumber(number, required = true)
-        case StringSchema(string)   => compileString(string, required = true)
-        case EnumSchema(enumSchema) =>
+      typeName <- schema.$ref match {
+        case ComponentsReference(id) =>
           for {
-            enumId <- compileTypeName(schema.$ref.id)
-            wrapperId <- compileEnumWrapper(enumSchema, enumId)
-          } yield FullIdentifier(wrapperId, enumId)
-        case DateSchema(date)       => compileDate(date, required = true)
-        case DateTimeSchema(date)   => compileDateTime(date, required = true)
-        case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
-        case ArraySchema(_)         => error[TypeIdentifier](refSchema.node, "array schema is not supported")
-        case ObjectSchema(_)        => compileTypeName(schema.$ref.id)
-        case _                      => error[TypeIdentifier](refSchema.node, "schema is not supported")
+            _ <- require(api.components.schemas.contains(id), id.node, s"component schema $id does not exists")
+            refSchema = api.components.schemas(id)
+            typeName: TypeIdentifier <- refSchema match {
+              case IntegerSchema(integer) => compileInteger(integer, required = true)
+              case NumberSchema(number)   => compileNumber(number, required = true)
+              case StringSchema(string)   => compileString(string, required = true)
+              case DateSchema(date)       => compileDate(date, required = true)
+              case DateTimeSchema(date)   => compileDateTime(date, required = true)
+              case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
+              case EnumSchema(enumSchema) =>
+                for {
+                  enumId <- compileTypeName(schema.$ref.id)
+                  wrapperId <- compileEnumWrapper(enumSchema, enumId)
+                } yield FullIdentifier(wrapperId, enumId)
+              case ObjectSchema(_) => compileTypeName(schema.$ref.id)
+              case _               => error[TypeIdentifier](refSchema.node, "schema is not supported")
+            }
+          } yield typeName
+        case ExternalReference(file, ComponentsReference(id)) =>
+          for {
+            externalApi <- resolver.resolve(api.filepath, file)
+            schemas = externalApi.components.schemas
+            _ <- require(schemas.contains(id), id.node, s"component schema $file $id does not exists")
+            refSchema = schemas(id)
+            typeName: TypeIdentifier <- refSchema match {
+              case IntegerSchema(integer) => compileInteger(integer, required = true)
+              case NumberSchema(number)   => compileNumber(number, required = true)
+              case StringSchema(string)   => compileString(string, required = true)
+              case DateSchema(date)       => compileDate(date, required = true)
+              case DateTimeSchema(date)   => compileDateTime(date, required = true)
+              case BooleanSchema(boolean) => compileBoolean(boolean, required = true)
+              case EnumSchema(enumSchema) =>
+                for {
+                  enumId <- compileTypeName(schema.$ref.id)
+                  wrapperId <- compileEnumWrapper(enumSchema, enumId)
+                  localPackage <- compilePackageName(api)
+                  externalPackage <- compilePackageName(externalApi)
+                  typeId = if (externalPackage == localPackage) {
+                    FullIdentifier(wrapperId, enumId)
+                  } else {
+                    FullIdentifier(externalPackage, wrapperId, enumId)
+                  }
+                } yield FullIdentifier(wrapperId, enumId)
+              case ObjectSchema(_) =>
+                for {
+                  componentType <- compileTypeName(schema.$ref.id)
+                  localPackage <- compilePackageName(api)
+                  externalPackage <- compilePackageName(externalApi)
+                  typeId = if (externalPackage == localPackage) {
+                    componentType
+                  } else {
+                    FullIdentifier(externalPackage, componentType)
+                  }
+                } yield typeId
+              case _ => error[TypeIdentifier](refSchema.node, "schema is not supported")
+            }
+          } yield typeName
+        case _ => error(schema.$ref.id.node, s"unsupported ref: ${schema.$ref}")
       }
     } yield typeName
 
