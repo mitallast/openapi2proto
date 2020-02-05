@@ -56,7 +56,7 @@ object Main extends IOApp {
     import builder._
     OParser.sequence(
       programName("openapi2proto"),
-      head("openapi2proto", "v0.1-alpha3"),
+      head("openapi2proto", "v0.1-beta.2"),
       cmd("compile")
         .action((_, c) => c.copy(command = Compile))
         .text("compile openapi v3 to protobuf v3 with gRPC")

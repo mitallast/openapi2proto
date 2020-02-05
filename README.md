@@ -5,12 +5,14 @@ Protobuf v3 with gRPC generator from subset of openapi v3
 ## Usage
 
 ```shell script
-openapi2proto v0.1
+openapi2proto v0.1-beta.2
 Usage: openapi2proto [compile|server] <args>...
 
-Command: compile <file>
+Command: compile [options] <file>
 compile openapi v3 to protobuf v3 with gRPC
   <file>                   openapi file in yaml format
+  -t, --target-path <value>
+                           output path
 Command: server [options]
 run web server with ui and rest api
   -p, --port <value>       port listen
