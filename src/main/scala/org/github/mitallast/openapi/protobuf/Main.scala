@@ -129,7 +129,7 @@ object Main extends IOApp {
             val source = Writer.writeFile(protoFile)
             println(source)
 
-            val targetFile = if (targetPath.getFileName.endsWith(".proto")) {
+            val targetFile = if (targetPath.getFileName.toString.endsWith(".proto")) {
               targetPath
             } else {
               targetPath.resolve(protoFile.path.value)
