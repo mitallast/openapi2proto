@@ -52,7 +52,7 @@ object OpenAPIResolver {
       for {
         path <- delay(Path.of(filepath.value))
         _ <- require(!path.isAbsolute, filepath.node, "compiler error, must be relative path")
-      } yield currentFile.getParent.resolve(path)
+      } yield currentFile.getParent.resolve(path).normalize()
 
     private def parse(path: Scalar[String], filepath: Path): Result[OpenAPI] =
       for {
