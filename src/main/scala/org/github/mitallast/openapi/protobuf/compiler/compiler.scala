@@ -273,10 +273,12 @@ object ProtoCompiler {
   def compileProtoPath(api: OpenAPI): Result[ProtoPath] =
     for {
       protoPath <- delay {
-        val parent = api.filepath.getParent
         val filename = api.filepath.getFileName
         val protoFilename = filename.toString.replaceAll("\\.ya?ml$", "") + ".proto"
-        parent.resolve(protoFilename).toString
+        Option(api.filepath.getParent) match {
+          case Some(parent) => parent.resolve(protoFilename).toString
+          case None         => protoFilename
+        }
       }
     } yield ProtoPath(protoPath)
 
