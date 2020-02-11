@@ -193,7 +193,7 @@ object ProtoCompiler {
         .traverse[Result, Unit] {
           case (key, valueNode) =>
             for {
-              optionId <- compileFullIdentifier(key.node, key.value)
+              optionId <- if (key.value.contains(".")) compileFullIdentifier(key) else compileIdentifier(key)
               scalar <- requireScalarNode(valueNode)
               constant = scalar match {
                 case BooleanScalar(value) => BooleanValue(value)
@@ -294,13 +294,16 @@ object ProtoCompiler {
       }
     } yield reserved
 
+  def compileTypeName(value: Scalar[String]): Result[Identifier] =
+    compileIdentifier(value.map(util.cleanup).map(util.underscoreToCamelCase).map(_.capitalize))
+
+  def compileFullIdentifier(value: Scalar[String]): Result[FullIdentifier] =
+    compileFullIdentifier(value.node, value.value)
+
   def compileFullIdentifier(node: Node, value: String): Result[FullIdentifier] =
     if (lexical.validate(value, lexical.identifiers.fullIdent)) {
       pure(FullIdentifier(value))
     } else error(node, "not valid full identifier")
-
-  def compileTypeName(value: Scalar[String]): Result[Identifier] =
-    compileIdentifier(value.map(util.cleanup).map(util.underscoreToCamelCase).map(_.capitalize))
 
   def compileIdentifier(value: Scalar[String]): Result[Identifier] =
     if (lexical.validate(value.value, lexical.identifiers.ident)) {

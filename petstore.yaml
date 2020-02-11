@@ -6,6 +6,7 @@ x-proto-import:
 x-proto-option:
   "gogoproto.goproto_registration": true
   "gogoproto.messagename_all": true
+  "php_generic_services": true
 servers:
   - description: SwaggerHub API Auto Mocking
     url: https://virtserver.swaggerhub.com/LorenzHW/originalPetstore/1.0.0

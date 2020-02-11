@@ -9,6 +9,7 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 option (gogoproto.goproto_registration) = true;
 option (gogoproto.messagename_all) = true;
+option php_generic_services = true;
 
 message TestMessage {
    oneof test2 {
