@@ -26,9 +26,6 @@ run web server with ui and rest api
 See details at [graalvm/homebrew-tap](https://github.com/graalvm/homebrew-tap)
 
 ```shell script
-# instal for java8
-brew cask install graalvm/tap/graalvm-ce-java8
-# or java11
 brew cask install graalvm/tap/graalvm-ce-java11
 ```
 
@@ -50,8 +47,16 @@ export PATH="$PATH":/Library/Java/JavaVirtualMachines/graalvm-ce-java11-19.3.1/C
 gu install native-image
 ```
 
-## Build tool
+## Build project
 
 ```shell script
-sbt "graalvm-native-image:packageBin"
+# clone project
+git clone git@github.com:mitallast/openapi2proto.git
+cd ./openapi2proto
+
+# build project
+./sbt "graalvm-native-image:packageBin"
+
+# run application for test
+./target/graalvm-native-image/openapi2proto
 ```
