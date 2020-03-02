@@ -544,7 +544,8 @@ object ProtoCompiler {
           schema match {
             case ObjectSchema(objectSchema) =>
               for {
-                _ <- compileInlineObject(builder, objectSchema, api, resolver)
+                valid <- compileInlineObject(builder, objectSchema, api, resolver)
+                _ <- if (valid) unit else left
                 _ = options += OptionStatement(Identifier.body, "*")
               } yield ()
             case _ =>
@@ -603,7 +604,8 @@ object ProtoCompiler {
               // When option `response_body` omitted, the entire response message
               // will be used as the HTTP response body.
               for {
-                _ <- compileInlineObject(builder, objectSchema, api, resolver)
+                valid <- compileInlineObject(builder, objectSchema, api, resolver)
+                _ <- if (valid) unit else left
               } yield ()
             case _ =>
               for {
@@ -699,6 +701,12 @@ object ProtoCompiler {
       case StringSchema(string) =>
         for {
           fieldType <- compileString(string, required)
+          fieldNum <- compileFieldNum(builder, extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+        } yield ()
+      case BinaryStringSchema(string) =>
+        for {
+          fieldType <- compileBinaryString(string, required)
           fieldNum <- compileFieldNum(builder, extensions)
           _ = builder += NormalField(fieldType, fieldId, fieldNum)
         } yield ()
@@ -845,6 +853,15 @@ object ProtoCompiler {
     } yield
       if (required) Identifier.string
       else FullIdentifier.string
+
+  def compileBinaryString(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
+    for {
+      _ <- requireNotRef(schema)
+      _ <- requireNotEnum(schema)
+      _ <- require(schema.format.contains(FormatType.BINARY_FORMAT), schema.node, "format is not allowed")
+    } yield
+      if (required) Identifier.bytes
+      else FullIdentifier.bytes
 
   def compileDate(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {

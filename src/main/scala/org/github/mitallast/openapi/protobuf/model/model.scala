@@ -33,6 +33,7 @@ object FullIdentifier {
   lazy val float: FullIdentifier = FullIdentifier("google.protobuf.FloatValue")
   lazy val double: FullIdentifier = FullIdentifier("google.protobuf.DoubleValue")
   lazy val string: FullIdentifier = FullIdentifier("google.protobuf.StringValue")
+  lazy val bytes: FullIdentifier = FullIdentifier("google.protobuf.BytesValue")
   lazy val bool: FullIdentifier = FullIdentifier("google.protobuf.BoolValue")
   lazy val empty: FullIdentifier = FullIdentifier("google.protobuf.Empty")
   lazy val http: FullIdentifier = FullIdentifier("google.api.http")
