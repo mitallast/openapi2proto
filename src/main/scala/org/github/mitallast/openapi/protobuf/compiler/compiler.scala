@@ -476,7 +476,6 @@ object ProtoCompiler {
             _ <- require(p.name.value.nonEmpty, p.node, "parameter name is required")
             _ <- require(p.schema.isDefined, p.node, "parameter schema is required")
             schema = p.schema.get
-            _ <- requireNotRef(schema)
             _ <- compileField(requestBuilder, p.name, api, schema, p.extensions, p.required.exists(_.value), resolver)
           } yield ()).attempt
         }
