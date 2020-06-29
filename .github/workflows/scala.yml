@@ -2,12 +2,12 @@ name: openapi2proto CI
 on: [push]
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest, macos-latest]
     steps:
     - uses: actions/checkout@v1
     - uses: olafurpg/setup-scala@v5
       with:
-        java-version: graalvm@19.3.1
+        java-version: graalvm@20.0.0
     - name: Install native image
       run: gu install native-image
     - name: Compile and package bin
