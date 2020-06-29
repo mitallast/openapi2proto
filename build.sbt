@@ -82,6 +82,7 @@ graalVMNativeImageOptions += "--allow-incomplete-classpath"
 graalVMNativeImageOptions += "--report-unsupported-elements-at-runtime"
 graalVMNativeImageOptions += "--initialize-at-build-time"
 graalVMNativeImageOptions += "-H:UnsafeAutomaticSubstitutionsLogLevel=3"
+graalVMNativeImageOptions += "-H:+ReportExceptionStackTraces"
 
 // RPM packaging
 
