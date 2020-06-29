@@ -17,7 +17,7 @@ jobs:
     - name: Compile and package bin
       run: sbt compile "graalvm-native-image:packageBin"
     - name: Save binary build openapi2proto
-      uses: actions/upload-artifact@v1
+      uses: actions/upload-artifact@v2
       with:
-        name: openapi2proto
+        name: openapi2proto ${{ matrix.os }}
         path: target/graalvm-native-image/openapi2proto
