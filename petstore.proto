@@ -18,16 +18,25 @@ message TestMessage {
       OrderStatus.OrderStatus order_status = 3;
       Category category = 4;
    }
+   google.protobuf.Int32Value test_option = 5 [ (gogoproto.moretags) = 'sensitive:"true"' ];
+   google.protobuf.Int32Value test_option2 = 6 [ (gogoproto.moretags) = 'sensitive:"true"', (gogoproto.casttype) = 'sensitive:"true"' ];
    oneof test_integers {
-      int32 test_v32 = 5;
-      fixed32 test_f32 = 6;
-      int64 test_v64 = 7;
-      fixed64 test_f64 = 8;
+      int32 test_v32 = 7;
+      fixed32 test_f32 = 8;
+      int64 test_v64 = 9;
+      fixed64 test_f64 = 10;
    }
    oneof test_dates {
-      fixed64 unix_seconds = 9;
-      fixed64 unix_millis = 10;
-      google.protobuf.Timestamp proto_timestamp = 11;
+      fixed64 unix_seconds = 11;
+      fixed64 unix_millis = 12;
+      google.protobuf.Timestamp proto_timestamp = 13;
+   }
+}
+
+message VerificationType {
+   enum VerificationType {
+      NONE = 0;
+      EMAIL = 1;
    }
 }
 
@@ -226,7 +235,7 @@ message UpdateUserResponse {
 }
 
 message DeleteUserRequest {
-   string username = 1;
+   VerificationType.VerificationType username = 1;
 }
 
 message DeleteUserResponse {

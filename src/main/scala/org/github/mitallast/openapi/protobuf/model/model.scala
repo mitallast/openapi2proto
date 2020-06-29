@@ -226,20 +226,20 @@ final case class MessageOption(optionName: Identifier, value: ConstantValue)
 
 sealed trait MessageField
 
-final case class FieldOption(optionName: Identifier, value: ConstantValue)
+final case class FieldOption(optionName: TypeIdentifier, value: ConstantValue)
 
 final case class NormalField(
   fieldType: TypeIdentifier,
   fieldName: Identifier,
   number: Int,
-  options: Vector[FieldOption] = Vector.empty
+  options: Vector[FieldOption]
 ) extends MessageField
 
 final case class RepeatedField(
   fieldType: TypeIdentifier,
   fieldName: Identifier,
   number: Int,
-  options: Vector[FieldOption] = Vector.empty
+  options: Vector[FieldOption]
 ) extends MessageField
 
 final class OneOfBuilder(private val oneOfName: Identifier) {

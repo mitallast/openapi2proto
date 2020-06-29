@@ -566,7 +566,7 @@ paths:
           description: The name that needs to be deleted
           required: true
           schema:
-            type: string
+            $ref: "#/components/schemas/VerificationType"
       responses:
         '400':
           description: Invalid username supplied
@@ -587,6 +587,17 @@ components:
             - $ref: '#/components/schemas/Pet'
             - $ref: '#/components/schemas/OrderStatus'
             - $ref: '#/components/schemas/Category'
+        testOption:
+          type: integer
+          format: int32
+          x-proto-option:
+            "gogoproto.moretags": 'sensitive:"true"'
+        testOption2:
+          type: integer
+          format: int32
+          x-proto-option:
+            "gogoproto.moretags": 'sensitive:"true"'
+            "gogoproto.casttype": 'sensitive:"true"'
         testIntegers:
           oneOf:
             - type: integer
@@ -622,6 +633,11 @@ components:
               x-proto-field: proto_timestamp
               x-proto-format: timestamp
               description: using protobuf built-in timestamp
+    VerificationType:
+      type: string
+      enum:
+        - none
+        - email
     PetStatus:
       type: string
       x-proto-wrapper: PetStatusWrapper

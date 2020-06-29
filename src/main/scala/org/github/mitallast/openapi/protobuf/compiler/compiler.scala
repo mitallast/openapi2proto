@@ -689,55 +689,64 @@ object ProtoCompiler {
         for {
           fieldType <- compileInteger(integer, required)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case NumberSchema(number) =>
         for {
           fieldType <- compileNumber(number, required)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case StringSchema(string) =>
         for {
           fieldType <- compileString(string, required)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case BinaryStringSchema(string) =>
         for {
           fieldType <- compileBinaryString(string, required)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case DateSchema(date) =>
         for {
           fieldType <- compileDate(date, required)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case DateTimeSchema(date) =>
         for {
           fieldType <- compileDateTime(date, required)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case BooleanSchema(boolean) =>
         for {
           fieldType <- compileBoolean(boolean, required)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case reference: Reference =>
         for {
           fieldType <- compileComponentRef(api, reference, resolver)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += NormalField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += NormalField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case ArraySchema(array) =>
         for {
           fieldType <- compileArrayType(api, array, resolver)
           fieldNum <- compileFieldNum(builder, extensions)
-          _ = builder += RepeatedField(fieldType, fieldId, fieldNum)
+          options <- compileFieldOptions(extensions)
+          _ = builder += RepeatedField(fieldType, fieldId, fieldNum, options)
         } yield ()
       case OneOfSchema(composed) =>
         for {
@@ -767,7 +776,8 @@ object ProtoCompiler {
                 }
                 fieldId <- compileFieldIdentifier(schema.extensions, fieldName)
                 fieldNum <- compileFieldNum(builder, schema.extensions)
-                _ = oneOf += OneOfField(fieldType, fieldId, fieldNum, Vector.empty)
+                options <- compileFieldOptions(schema.extensions)
+                _ = oneOf += OneOfField(fieldType, fieldId, fieldNum, options)
               } yield ()).attempt
             }
             .map(_.forall(_.isRight))
@@ -803,6 +813,25 @@ object ProtoCompiler {
       clean = constant.map(util.cleanup).map(util.camelCaseToUnderscore)
       id <- compileIdentifier(clean)
     } yield id
+
+  def compileFieldOptions(extensions: Extensions): Result[Vector[FieldOption]] =
+    for {
+      options <- compileExtensionMap(extensions, "x-proto-option")
+      result <- options.entries
+        .traverse[Result, FieldOption] {
+          case (key, valueNode) =>
+            for {
+              optionId <- if (key.value.contains(".")) compileFullIdentifier(key) else compileIdentifier(key)
+              scalar <- requireScalarNode(valueNode)
+              constant = scalar match {
+                case BooleanScalar(value) => BooleanValue(value)
+                case LongScalar(value)    => LongValue(value)
+                case DoubleScalar(value)  => DoubleValue(value)
+                case _                    => StringValue(scalar.getValue)
+              }
+            } yield FieldOption(optionId, constant)
+        }
+    } yield result
 
   def compileInteger(schema: SchemaNormal, required: Boolean): Result[TypeIdentifier] =
     for {

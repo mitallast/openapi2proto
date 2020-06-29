@@ -67,9 +67,20 @@ object instances {
 
   implicit val ConstantValueWriter: Writer[ConstantValue] = instance {
     case (c: StringValue, builder) =>
-      val stmt = s""""${c.value}""""
-      valid(stmt, letters.strLit)
-      builder.append(stmt)
+      val quote: Char = if (c.value.contains('\'')) {
+        '\"'
+      } else if (c.value.contains('\"')) {
+        '\''
+      } else {
+        '\"'
+      }
+      val stmt = new StringBuilder()
+      stmt.append(quote)
+      stmt.append(c.value)
+      stmt.append(quote)
+      val quoted = stmt.toString()
+      valid(quoted, letters.strLit)
+      builder.append(quoted)
     case (c: LongValue, builder)    => builder.append(c.value)
     case (c: DoubleValue, builder)  => builder.append(c.value)
     case (c: BooleanValue, builder) => builder.append(c.value)
@@ -105,16 +116,26 @@ object instances {
   }
 
   implicit val FieldOptionWriter: Writer[FieldOption] = instance { (option, builder) =>
-    builder << option.optionName << " = " << option.value
+    option.optionName match {
+      case Identifier(id)     => builder << id
+      case FullIdentifier(id) => builder << "(" << id << ")"
+    }
+    builder << " = " << option.value
   }
 
   implicit val FieldOptionsWriter: Writer[Vector[FieldOption]] = instance { (options, builder) =>
     if (options.nonEmpty) {
       builder << " [ "
+      var first = true
       for (option <- options) {
-        builder << option << " "
+        if (first) {
+          builder << option
+          first = false
+        } else {
+          builder << ", " << option
+        }
       }
-      builder << "]"
+      builder << " ]"
     }
   }
 
